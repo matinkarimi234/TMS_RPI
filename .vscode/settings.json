@@ -1,0 +1,17 @@
+{
+  // Use the project venv
+  "python.defaultInterpreterPath": "${workspaceFolder}\.qtcreator\Python_3_9_6venv\Scripts\python",
+
+  // Make imports like "from app.x import y" resolve (src/ on sys.path)
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}\src"
+  ],
+
+  // Load environment variables for runs/debugging
+  "python.envFile": "${workspaceFolder}\.qtcreator\Python_3_9_6venv",
+
+  // Testing (optional but handy)
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests"],
+  "python.terminal.activateEnvironment": true
+}
