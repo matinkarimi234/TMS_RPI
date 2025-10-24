@@ -1,0 +1,20 @@
+/* Light Theme */
+QWidget {
+    color: #000000; /* Default text color for all widgets */
+}
+
+QListWidget {
+    background-color: #F0F0F0; /* Light gray background */
+    border: 2px solid #CCCCCC;
+    outline: 0;
+}
+
+QListWidget::item {
+    border-bottom: 2px solid #CCCCCC;
+    padding: 10px;
+}
+
+QListWidget::item:selected {
+    background-color: #3399FF; /* A slightly lighter blue for selection */
+    border: 1px solid #000000;
+}

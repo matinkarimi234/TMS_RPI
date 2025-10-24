@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QVBoxLayout, QFormLayout,
     QPushButton, QLabel, QFrame
 )
+from PySide6.QtGui import QPalette, QColor
 import sys, math
 from typing import Optional
 
@@ -170,7 +171,7 @@ class PulseBarsGraph(QWidget):
         draw_cursor_now = show_cursor and not (in_final_pause and self.hide_cursor_between_loops)
         if draw_cursor_now:
             x = R.right() if in_final_pause else (R.left() + (t_mod/total_path)*R.width())
-            p.setPen(QPen(Qt.green, 3))
+            p.setPen(QPen(self.palette().accent().color(), 3))
             p.drawLine(x, R.top(), x, R.bottom())
 
         # top bracket, bottom brackets, total time text
@@ -215,7 +216,7 @@ class PulseBarsGraph(QWidget):
             p.drawEllipse(rect)
             # progress arc (sweep)
             sweep = int(360 * (remain / pause_len)) if pause_len > 0 else 0
-            p.setPen(QPen(Qt.green, self.countdown_ring_width))
+            p.setPen(QPen(self.palette().accent().color(), self.countdown_ring_width))
             # draw arc from top, clockwise negative angle
             p.drawArc(rect, 90*16, -sweep*16)
 
@@ -263,6 +264,12 @@ class PulseBarsWidget(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     w = PulseBarsWidget()
+    pal = app.palette()
+    pal.setColor(QPalette.Base, QColor("#3c3c3c"))
+    pal.setColor(QPalette.Text, QColor("#c8c8c8"))
+    pal.setColor(QPalette.Mid,  QColor("#c8c8c8"))   # grid / faint lines
+    pal.setColor(QPalette.Accent, QColor("#32CD32"))
+    app.setPalette(pal)
     w.setWindowTitle("TMS Graph + Countdown — PySide6")
     # photo-like defaults
     w.set_protocol(repeats=3, train_duration_s=0.5, inter_train_interval_s=0.5, bursts_per_train=3)
@@ -273,6 +280,7 @@ if __name__ == "__main__":
     # optional: place the circle
     w.graph.countdown_pos = "bottom_right"      # "top_left" | "bottom_right" | "bottom_left"
     w.resize(400, 320)
+    
     w.show()
     w._start()
     sys.exit(app.exec())
