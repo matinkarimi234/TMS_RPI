@@ -1,0 +1,9 @@
+{
+    "BACKGROUND_COLOR": "#3c3c3c",
+    "TEXT_COLOR": "#ffffff",
+    "TEXT_COLOR_SECONDARY": "#becedd",
+    "ACCENT_COLOR": "#127ec3",
+    "TEXT_COLOR_SELECTED": "#FFFFFF",
+    "BORDER_COLOR": "#444444",
+    "WINDOW_TITLE_BG": "#3C3C3C"
+}
