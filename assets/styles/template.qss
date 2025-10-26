@@ -11,6 +11,75 @@ QWidget {
     font-family: "Segoe UI";
 }
 
+/* PulseBarsWidget specific styling */
+PulseBarsWidget {
+    background-color: {{BACKGROUND_COLOR}};
+    border: 1px solid {{BORDER_COLOR}};
+    border-radius: 4px;
+}
+
+PulseBarsWidget QWidget#controlPanel {
+    background-color: {{BACKGROUND_COLOR}};
+    border-left: 1px solid {{BORDER_COLOR}};
+    padding: 12px;
+}
+
+/* Status labels in control panel */
+PulseBarsWidget QLabel#statusLabel,
+PulseBarsWidget QLabel#timeLabel {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid {{BORDER_COLOR}};
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 2px 0;
+    font-size: 11px;
+}
+
+PulseBarsWidget QLabel#statusLabel {
+    color: {{TEXT_COLOR_SECONDARY}};
+}
+
+PulseBarsWidget QLabel#timeLabel {
+    color: {{TEXT_COLOR}};
+    font-weight: bold;
+}
+
+/* Button styling for PulseBarsWidget controls */
+PulseBarsWidget QPushButton#startButton,
+PulseBarsWidget QPushButton#stopButton {
+    background-color: {{ACCENT_COLOR}};
+    color: {{TEXT_COLOR_SELECTED}};
+    border: none;
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    margin: 4px 0;
+    min-height: 32px;
+}
+
+PulseBarsWidget QPushButton#startButton:hover,
+PulseBarsWidget QPushButton#stopButton:hover {
+    background-color: {{ACCENT_COLOR}};
+    opacity: 0.9;
+}
+
+PulseBarsWidget QPushButton#startButton:pressed,
+PulseBarsWidget QPushButton#stopButton:pressed {
+    background-color: {{ACCENT_COLOR}};
+    opacity: 0.7;
+}
+
+PulseBarsWidget QPushButton#stopButton:disabled {
+    background-color: {{BORDER_COLOR}};
+    color: {{TEXT_COLOR_SECONDARY}};
+}
+
+PulseBarsWidget QPushButton#startButton:disabled {
+    background-color: {{BORDER_COLOR}};
+    color: {{TEXT_COLOR_SECONDARY}};
+}
+
 /* Styling for our custom NavigationListWidget */
 NavigationListWidget {
     border: 1px solid {{BORDER_COLOR}};
@@ -18,12 +87,6 @@ NavigationListWidget {
 }
 
 /* 
-    ========================================================
-    === THE FIX IS HERE ===
-    ========================================================
-    This new rule makes any QWidget placed inside our list transparent.
-    This allows the item's background selection color to show through.
-    This rule is more specific than the global 'QWidget' rule, so it takes precedence.
 */
 NavigationListWidget QWidget {
     background-color: transparent;
@@ -93,3 +156,13 @@ QMainWindow {
     background-color: {{BACKGROUND_COLOR}};
 }
 
+/* Additional general styling */
+QLabel {
+    color: {{TEXT_COLOR}};
+}
+
+QFrame {
+    border: 1px solid {{BORDER_COLOR}};
+    border-radius: 4px;
+    background-color: {{BACKGROUND_COLOR}};
+}
