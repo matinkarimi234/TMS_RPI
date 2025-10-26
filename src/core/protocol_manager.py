@@ -1,262 +1,267 @@
-from dataclasses import dataclass, field, asdict
-from typing import List, Optional
+
+
+from __future__ import annotations
+from dataclasses   import dataclass, field, asdict
+from typing       import ClassVar, Optional, List
 import json
+
 
 @dataclass
 class TMSProtocol:
-    """
-    A TMS protocol with full bounds-checking and two-way linkage between:
-      - subject_mt_percent             (each subject’s motor threshold in % MSO)
-      - intensity_percent_of_mt        (stimulation intensity as % of that MT)
-      - absolute_output_percent        (the actual stimulator output in % MSO)
+    # ——— 1) Init‐args without defaults — must come first ———
+    name                     : str
+    subject_mt_percent       : float
+    intensity_percent_of_mt  : float
+    frequency_hz             : float
+    pulses_per_train         : int
+    train_count              : int
+    inter_train_interval_s   : float
+    target_region            : str
 
-    All other parameters carry hard bounds typical of TMS devices.
-    """
+    # ——— 2) Init‐args with defaults — now you can safely list these ———
+    description              : Optional[str] = None
+    _absolute_output_init: Optional[float] = None 
 
-    name: str
-    
-    # Internal storage of the “master” values
-    _subject_mt_percent:        float
-    _intensity_percent_of_mt:   float
-    _frequency_hz:              float
-    _pulses_per_train:          int
-    _train_count:               int
-    _inter_train_interval_s:    float
+    # ——— 3) Device bounds — annotate as ClassVar so dataclass skips them ———
+    MIN_MT_PERCENT                       : ClassVar[float] =   1.0
+    MAX_MT_PERCENT                       : ClassVar[float] = 100.0
 
-    target_region: str
-    description:   Optional[str] = None
+    MIN_RELATIVE_INTENSITY_PERCENT       : ClassVar[float] =  10.0
+    MAX_RELATIVE_INTENSITY_PERCENT_STATIC: ClassVar[float] = 200.0
 
-    #— DEVICE BOUNDS (class constants) —
-    MIN_MT_PERCENT                    =  1.0
-    MAX_MT_PERCENT                    =100.0
+    MIN_ABSOLUTE_OUTPUT_PERCENT          : ClassVar[float] =   0.0
+    MAX_ABSOLUTE_OUTPUT_PERCENT          : ClassVar[float] = 100.0
 
-    MIN_RELATIVE_INTENSITY_PERCENT            = 10.0
-    MAX_RELATIVE_INTENSITY_PERCENT_STATIC     =200.0
+    MIN_FREQUENCY_HZ                     : ClassVar[float] =   1.0
+    MAX_FREQUENCY_HZ                     : ClassVar[float] = 100.0
 
-    MIN_ABSOLUTE_OUTPUT_PERCENT       =  0.0
-    MAX_ABSOLUTE_OUTPUT_PERCENT       =100.0
+    MIN_PULSES_PER_TRAIN                 : ClassVar[int]   =     1
+    MAX_PULSES_PER_TRAIN                 : ClassVar[int]   = 10000
 
-    MIN_FREQUENCY_HZ                  =  1
-    MAX_FREQUENCY_HZ                  =100.0
+    MIN_TRAIN_COUNT                      : ClassVar[int]   =     1
+    MAX_TRAIN_COUNT                      : ClassVar[int]   = 10000
 
-    MIN_PULSES_PER_TRAIN              =  1
-    MAX_PULSES_PER_TRAIN              =10000
+    MIN_INTER_TRAIN_INTERVAL_S           : ClassVar[float] =   0.0
+    MAX_INTER_TRAIN_INTERVAL_S           : ClassVar[float] = 3600.0
 
-    MIN_TRAIN_COUNT                   =  1
-    MAX_TRAIN_COUNT                   =10000
+    # ——— 4) Private backing fields (no __init__) ———
+    _subject_mt_percent       : float         = field(init=False, repr=False)
+    _intensity_percent_of_mt  : float         = field(init=False, repr=False)
+    _frequency_hz             : float         = field(init=False, repr=False)
+    _pulses_per_train         : int           = field(init=False, repr=False)
+    _train_count              : int           = field(init=False, repr=False)
+    _inter_train_interval_s   : float         = field(init=False, repr=False)
+    _absolute_output_percent  : float         = field(init=False, repr=False)
+    _description              : Optional[str] = field(init=False, repr=False)
+    _target_region            : str           = field(init=False, repr=False)
 
-    MIN_INTER_TRAIN_INTERVAL_S        =  0.0
-    MAX_INTER_TRAIN_INTERVAL_S        =3600.0  # up to 1 hour
 
     def __post_init__(self):
-        # Run all setters once to enforce bounds
-        self.subject_mt_percent         = self._subject_mt_percent
-        self.intensity_percent_of_mt    = self._intensity_percent_of_mt
-        self.frequency_hz               = self._frequency_hz
-        self.pulses_per_train           = self._pulses_per_train
-        self.train_count                = self._train_count
-        self.inter_train_interval_s     = self._inter_train_interval_s
+        # Force every constructor argument through the setter logic:
+        self.subject_mt_percent      = self.subject_mt_percent
+        self.description             = self.description
+        self.target_region           = self.target_region
 
-    #— MT PROPERTY —
+        if self._absolute_output_init is not None:
+            self.absolute_output_percent = self._absolute_output_init
+        else:
+            self.intensity_percent_of_mt = self.intensity_percent_of_mt
+
+        self.frequency_hz             = self.frequency_hz
+        self.pulses_per_train         = self.pulses_per_train
+        self.train_count              = self.train_count
+        self.inter_train_interval_s   = self.inter_train_interval_s
+
+
+    # ——— subject_mt_percent ———
     @property
     def subject_mt_percent(self) -> float:
-        """Subject’s motor threshold in % MSO."""
         return self._subject_mt_percent
 
     @subject_mt_percent.setter
-    def subject_mt_percent(self, new_mt: float) -> None:
-        if not (self.MIN_MT_PERCENT <= new_mt <= self.MAX_MT_PERCENT):
+    def subject_mt_percent(self, value: float):
+        if value < self.MIN_MT_PERCENT or value > self.MAX_MT_PERCENT:
             raise ValueError(
                 f"subject_mt_percent must be in "
                 f"[{self.MIN_MT_PERCENT}, {self.MAX_MT_PERCENT}]%"
             )
-        self._subject_mt_percent = new_mt
-
-        # After MT changes, ensure intensity is still within dynamic bound
-        if self._intensity_percent_of_mt > self.max_intensity_percent_of_mt:
+        self._subject_mt_percent = value
+        # clamp relative intensity if it now exceeds the dynamic max
+        if hasattr(self, "_intensity_percent_of_mt") \
+           and self._intensity_percent_of_mt > self.max_intensity_percent_of_mt:
             self._intensity_percent_of_mt = self.max_intensity_percent_of_mt
 
-    #— RELATIVE INTENSITY PROPERTY —
+
+    # ——— intensity_percent_of_mt ———
     @property
     def intensity_percent_of_mt(self) -> float:
-        """Stimulation intensity as % of subject’s MT."""
         return self._intensity_percent_of_mt
 
     @intensity_percent_of_mt.setter
-    def intensity_percent_of_mt(self, new_intensity_percent_of_mt: float) -> None:
-        min_allowed = self.MIN_RELATIVE_INTENSITY_PERCENT
-        max_allowed = self.max_intensity_percent_of_mt
-        if not (min_allowed <= new_intensity_percent_of_mt <= max_allowed):
+    def intensity_percent_of_mt(self, value: float):
+        min_r = self.MIN_RELATIVE_INTENSITY_PERCENT
+        max_r = self.max_intensity_percent_of_mt
+        if value < min_r or value > max_r:
             raise ValueError(
-                f"intensity_percent_of_mt must be in "
-                f"[{min_allowed:.1f}, {max_allowed:.1f}]% of MT "
-                f"(dynamic max so that absolute ≤100% MSO)"
+                f"intensity_percent_of_mt must be in [{min_r}, {max_r}]% of MT"
             )
-        self._intensity_percent_of_mt = new_intensity_percent_of_mt
+        self._intensity_percent_of_mt = value
+        # update absolute
+        self._absolute_output_percent = (self._subject_mt_percent * value) / 100.0
 
     @property
     def max_intensity_percent_of_mt(self) -> float:
-        """
-        Dynamic upper bound on relative intensity so that
-        absolute_output_percent ≤ 100% MSO:
-          max_rel = 100 * 100 / subject_mt_percent
-        but never above MAX_RELATIVE_INTENSITY_PERCENT_STATIC.
-        """
-        dynamic_bound = 100.0 * 100.0 / self._subject_mt_percent
-        return min(self.MAX_RELATIVE_INTENSITY_PERCENT_STATIC, dynamic_bound)
+        # dynamic upper‐bound so |absolute| ≤ 100%
+        dyn = 100.0 * 100.0 / self._subject_mt_percent
+        return min(self.MAX_RELATIVE_INTENSITY_PERCENT_STATIC, dyn)
 
-    #— ABSOLUTE OUTPUT PROPERTY —
+
+    # ——— absolute_output_percent ———
     @property
     def absolute_output_percent(self) -> float:
-        """
-        The actual stimulator output in % MSO,
-        computed as subject_mt_percent × intensity_percent_of_mt ÷ 100.
-        """
-        return self._subject_mt_percent * self._intensity_percent_of_mt / 100.0
+        return self._absolute_output_percent
 
     @absolute_output_percent.setter
-    def absolute_output_percent(self, new_absolute_output_percent: float) -> None:
-        if not (
-            self.MIN_ABSOLUTE_OUTPUT_PERCENT
-            <= new_absolute_output_percent
-            <= self.MAX_ABSOLUTE_OUTPUT_PERCENT
-        ):
+    def absolute_output_percent(self, value: float):
+        if value < self.MIN_ABSOLUTE_OUTPUT_PERCENT \
+           or value > self.MAX_ABSOLUTE_OUTPUT_PERCENT:
             raise ValueError(
                 f"absolute_output_percent must be in "
                 f"[{self.MIN_ABSOLUTE_OUTPUT_PERCENT}, "
-                f"{self.MAX_ABSOLUTE_OUTPUT_PERCENT}]% MSO"
+                f"{self.MAX_ABSOLUTE_OUTPUT_PERCENT}]%"
             )
-
-        # Compute the new relative intensity so that:
-        # new_relative_intensity_percent_of_mt =
-        #    new_absolute_output_percent / subject_mt_percent × 100
-        new_intensity_percent_of_mt = (
-            new_absolute_output_percent
-            / self._subject_mt_percent
-            * 100.0
-        )
-
-        # Double-check it does not exceed the dynamic bound
-        if new_intensity_percent_of_mt > self.max_intensity_percent_of_mt:
+        # derive new relative intensity
+        rel = (value / self._subject_mt_percent) * 100.0
+        if rel > self.max_intensity_percent_of_mt:
             raise ValueError(
-                "Computed intensity_percent_of_mt "
-                "would exceed the dynamic maximum"
+                "absolute_output_percent would force "
+                "intensity_percent_of_mt above dynamic max"
             )
+        self._absolute_output_percent     = value
+        self._intensity_percent_of_mt     = rel
 
-        # Everything is valid → store it
-        self._intensity_percent_of_mt = new_intensity_percent_of_mt
 
-    #— FREQUENCY PROPERTY —
+    # ——— frequency_hz ———
     @property
     def frequency_hz(self) -> float:
         return self._frequency_hz
 
     @frequency_hz.setter
-    def frequency_hz(self, new_frequency_hz: float) -> None:
-        if not (
-            self.MIN_FREQUENCY_HZ
-            <= new_frequency_hz
-            <= self.MAX_FREQUENCY_HZ
-        ):
+    def frequency_hz(self, value: float):
+        if value < self.MIN_FREQUENCY_HZ or value > self.MAX_FREQUENCY_HZ:
             raise ValueError(
                 f"frequency_hz must be in "
-                f"[{self.MIN_FREQUENCY_HZ}, {self.MAX_FREQUENCY_HZ}] Hz"
+                f"[{self.MIN_FREQUENCY_HZ}, {self.MAX_FREQUENCY_HZ}]"
             )
-        self._frequency_hz = new_frequency_hz
+        self._frequency_hz = value
 
-    #— PULSES PER TRAIN PROPERTY —
+
+    # ——— pulses_per_train ———
     @property
     def pulses_per_train(self) -> int:
         return self._pulses_per_train
 
     @pulses_per_train.setter
-    def pulses_per_train(self, new_pulses_per_train: int) -> None:
-        if not (
-            self.MIN_PULSES_PER_TRAIN
-            <= new_pulses_per_train
-            <= self.MAX_PULSES_PER_TRAIN
-        ):
+    def pulses_per_train(self, value: int):
+        if value < self.MIN_PULSES_PER_TRAIN \
+           or value > self.MAX_PULSES_PER_TRAIN:
             raise ValueError(
                 f"pulses_per_train must be in "
                 f"[{self.MIN_PULSES_PER_TRAIN}, {self.MAX_PULSES_PER_TRAIN}]"
             )
-        self._pulses_per_train = new_pulses_per_train
+        self._pulses_per_train = value
 
-    #— TRAIN COUNT PROPERTY —
+
+    # ——— train_count ———
     @property
     def train_count(self) -> int:
         return self._train_count
 
     @train_count.setter
-    def train_count(self, new_train_count: int) -> None:
-        if not (
-            self.MIN_TRAIN_COUNT
-            <= new_train_count
-            <= self.MAX_TRAIN_COUNT
-        ):
+    def train_count(self, value: int):
+        if value < self.MIN_TRAIN_COUNT or value > self.MAX_TRAIN_COUNT:
             raise ValueError(
                 f"train_count must be in "
                 f"[{self.MIN_TRAIN_COUNT}, {self.MAX_TRAIN_COUNT}]"
             )
-        self._train_count = new_train_count
+        self._train_count = value
 
-    #— INTER-TRAIN INTERVAL PROPERTY —
+
+    # ——— inter_train_interval_s ———
     @property
     def inter_train_interval_s(self) -> float:
         return self._inter_train_interval_s
 
     @inter_train_interval_s.setter
-    def inter_train_interval_s(self, new_interval_s: float) -> None:
-        if not (
-            self.MIN_INTER_TRAIN_INTERVAL_S
-            <= new_interval_s
-            <= self.MAX_INTER_TRAIN_INTERVAL_S
-        ):
+    def inter_train_interval_s(self, value: float):
+        if (value < self.MIN_INTER_TRAIN_INTERVAL_S
+            or value > self.MAX_INTER_TRAIN_INTERVAL_S):
             raise ValueError(
                 f"inter_train_interval_s must be in "
                 f"[{self.MIN_INTER_TRAIN_INTERVAL_S}, "
-                f"{self.MAX_INTER_TRAIN_INTERVAL_S}] seconds"
+                f"{self.MAX_INTER_TRAIN_INTERVAL_S}]"
             )
-        self._inter_train_interval_s = new_interval_s
+        self._inter_train_interval_s = value
 
-    #— SUMMARY CALCULATIONS —
+
+    # ——— target_region ———
+    @property
+    def target_region(self) -> str:
+        return self._target_region
+
+    @target_region.setter
+    def target_region(self, value: str):
+        if not isinstance(value, str):
+            raise ValueError("target_region must be a string")
+        self._target_region = value
+
+
+    # ——— description ———
+    @property
+    def description(self) -> Optional[str]:
+        return self._description
+
+    @description.setter
+    def description(self, value: Optional[str]):
+        if value is not None and not isinstance(value, str):
+            raise ValueError("description must be a string or None")
+        self._description = value
+
+
+    # ——— Summary metrics ———
     def total_pulses(self) -> int:
-        return self._pulses_per_train * self._train_count
+        return self.pulses_per_train * self.train_count
 
     def total_duration_s(self) -> float:
-        stim_time = self._pulses_per_train / self._frequency_hz
-        rest_time = self._inter_train_interval_s * (self._train_count - 1)
-        return stim_time * self._train_count + rest_time
+        stim = self.pulses_per_train / self.frequency_hz
+        rest = self.inter_train_interval_s * (self.train_count - 1)
+        return stim * self.train_count + rest
+
 
 
 @dataclass
 class ProtocolManager:
-    """Stores, retrieves and JSON-persists multiple TMSProtocol instances."""
+    """Holds, JSON‐loads/saves, and queries many TMSProtocol instances."""
     protocols: List[TMSProtocol] = field(default_factory=list)
 
-    def add_protocol(self, proto: TMSProtocol) -> None:
-        self.protocols = [
-            existing for existing in self.protocols
-            if existing.name != proto.name
-        ]
-        self.protocols.append(proto)
+    def add_protocol(self, p: TMSProtocol) -> None:
+        # replace same‐name if present
+        self.protocols = [x for x in self.protocols if x.name != p.name]
+        self.protocols.append(p)
 
     def remove_protocol(self, name: str) -> bool:
-        before = len(self.protocols)
-        self.protocols = [
-            existing for existing in self.protocols
-            if existing.name != name
-        ]
-        return len(self.protocols) < before
+        old = len(self.protocols)
+        self.protocols = [x for x in self.protocols if x.name != name]
+        return len(self.protocols) < old
 
     def get_protocol(self, name: str) -> Optional[TMSProtocol]:
-        for existing in self.protocols:
-            if existing.name == name:
-                return existing
+        for x in self.protocols:
+            if x.name == name:
+                return x
         return None
 
     def list_protocols(self) -> List[str]:
-        return [p.name for p in self.protocols]
+        return [x.name for x in self.protocols]
 
     def save_to_json(self, filepath: str) -> None:
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -265,45 +270,9 @@ class ProtocolManager:
     def load_from_json(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        # Each dict must have exactly the keys:
+        #   name, subject_mt_percent, intensity_percent_of_mt,
+        #   frequency_hz, pulses_per_train, train_count,
+        #   inter_train_interval_s, target_region
+        # (and optionally) description, absolute_output_percent
         self.protocols = [TMSProtocol(**entry) for entry in data]
-
-
-
-# Test
-if "__main__":
-    import json
-    from pathlib import Path
-    PROJECT_ROOT = Path(__file__).parent.resolve()
-    # 1. Read the JSON file
-    with open(PROJECT_ROOT / "protocols.json", 'r', encoding='utf-8') as f:
-        raw = json.load(f)
-
-    # 2. Instantiate TMSProtocol objects from raw entries
-    manager = ProtocolManager()
-    for entry in raw:
-        proto = TMSProtocol(
-            name=entry["name"],
-            _subject_mt_percent=entry["subject_mt_percent"],
-            _intensity_percent_of_mt=entry["intensity_percent_of_mt"],
-            _frequency_hz=entry["frequency_hz"],
-            _pulses_per_train=entry["pulses_per_train"],
-            _train_count=entry["train_count"],
-            _inter_train_interval_s=entry["inter_train_interval_s"],
-            target_region=entry["target_region"],
-            description=entry.get("description")
-        )
-        manager.add_protocol(proto)
-
-    # 3. List available protocols
-    print("Loaded protocols:", manager.list_protocols())
-    # → ['iTBS_Standard', 'cTBS_Standard', 'rTMS_10Hz_depression', ...]
-
-    # 4. Inspect one protocol
-    p = manager.get_protocol("iTBS_Standard")
-    print(f"Name: {p.name}")
-    print(f"  Subject MT (MSO%):          {p.subject_mt_percent}")
-    print(f"  Rel. Intensity (% of MT):  {p.intensity_percent_of_mt}")
-    print(f"  Absolute Output (% MSO):   {p.absolute_output_percent:.1f}")
-    print(f"  Total Pulses:              {p.total_pulses()}")
-    print(f"  Total Duration (s):        {p.total_duration_s():.1f}")
-
