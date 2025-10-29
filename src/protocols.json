@@ -8,7 +8,9 @@
         "train_count": 20,
         "inter_train_interval_s": 8.0,
         "target_region": "Motor Cortex",
-        "description": "Standard intermittent TBS protocol"
+        "description": "Standard intermittent TBS protocol",
+        "ramp_fraction": 1.0,
+        "ramp_steps": 1
     },
     {
         "name": "cTBS_Standard",
@@ -19,7 +21,9 @@
         "train_count": 20,
         "inter_train_interval_s": 0.0,
         "target_region": "Motor Cortex",
-        "description": "Standard continuous TBS protocol"
+        "description": "Standard continuous TBS protocol",
+        "ramp_fraction": 1.0,
+        "ramp_steps": 1
     },
     {
         "name": "rTMS_10Hz_depression",
@@ -30,7 +34,9 @@
         "train_count": 10,
         "inter_train_interval_s": 30.0,
         "target_region": "Dorsolateral Prefrontal Cortex",
-        "description": "10 Hz rTMS for depression"
+        "description": "10 Hz rTMS for depression",
+        "ramp_fraction": 1.0,
+        "ramp_steps": 1
     },
     {
         "name": "rTMS_1Hz_inhibitory",
@@ -41,7 +47,9 @@
         "train_count": 1,
         "inter_train_interval_s": 0.0,
         "target_region": "Motor Cortex",
-        "description": "1 Hz inhibitory rTMS"
+        "description": "1 Hz inhibitory rTMS",
+        "ramp_fraction": 1.0,
+        "ramp_steps": 1
     },
     {
         "name": "rTMS_20Hz_executive",
@@ -52,6 +60,8 @@
         "train_count": 20,
         "inter_train_interval_s": 15.0,
         "target_region": "Dorsolateral Prefrontal Cortex",
-        "description": "20 Hz rTMS to boost executive function"
+        "description": "20 Hz rTMS to boost executive function",
+        "ramp_fraction": 1.0,
+        "ramp_steps": 1
     }
 ]

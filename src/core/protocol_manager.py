@@ -1,67 +1,76 @@
-
-
 from __future__ import annotations
-from dataclasses   import dataclass, field, asdict
-from typing       import ClassVar, Optional, List
+from dataclasses import dataclass, field, asdict
+from typing import ClassVar, Optional, List, Tuple
 import json
-
 
 @dataclass
 class TMSProtocol:
     # ——— 1) Init‐args without defaults — must come first ———
-    name                     : str
-    subject_mt_percent       : float
-    intensity_percent_of_mt  : float
-    frequency_hz             : float
-    pulses_per_train         : int
-    train_count              : int
-    inter_train_interval_s   : float
-    target_region            : str
+    name: str
+    subject_mt_percent: float
+    intensity_percent_of_mt: float
+    frequency_hz: float
+    pulses_per_train: int
+    train_count: int
+    inter_train_interval_s: float
+    target_region: str
 
     # ——— 2) Init‐args with defaults — now you can safely list these ———
-    description              : Optional[str] = None
-    _absolute_output_init: Optional[float] = None 
+    description: Optional[str]            = None
+    _absolute_output_init: Optional[float] = None
+
+    # NEW: ramp parameters
+    ramp_fraction: float                  = 1.0   # 0.7 … 1.0
+    ramp_steps: int                       = 1     # 1 … 10
 
     # ——— 3) Device bounds — annotate as ClassVar so dataclass skips them ———
-    MIN_MT_PERCENT                       : ClassVar[float] =   1.0
-    MAX_MT_PERCENT                       : ClassVar[float] = 100.0
+    MIN_MT_PERCENT: ClassVar[float]                      = 1.0
+    MAX_MT_PERCENT: ClassVar[float]                      = 100.0
 
-    MIN_RELATIVE_INTENSITY_PERCENT       : ClassVar[float] =  10.0
+    MIN_RELATIVE_INTENSITY_PERCENT: ClassVar[float]      = 10.0
     MAX_RELATIVE_INTENSITY_PERCENT_STATIC: ClassVar[float] = 200.0
 
-    MIN_ABSOLUTE_OUTPUT_PERCENT          : ClassVar[float] =   0.0
-    MAX_ABSOLUTE_OUTPUT_PERCENT          : ClassVar[float] = 100.0
+    MIN_ABSOLUTE_OUTPUT_PERCENT: ClassVar[float]          = 0.0
+    MAX_ABSOLUTE_OUTPUT_PERCENT: ClassVar[float]          = 100.0
 
-    MIN_FREQUENCY_HZ                     : ClassVar[float] =   1.0
-    MAX_FREQUENCY_HZ                     : ClassVar[float] = 100.0
+    MIN_FREQUENCY_HZ: ClassVar[float]                    = 1.0
+    MAX_FREQUENCY_HZ: ClassVar[float]                    = 100.0
 
-    MIN_PULSES_PER_TRAIN                 : ClassVar[int]   =     1
-    MAX_PULSES_PER_TRAIN                 : ClassVar[int]   = 10000
+    MIN_PULSES_PER_TRAIN: ClassVar[int]                  = 1
+    MAX_PULSES_PER_TRAIN: ClassVar[int]                  = 10000
 
-    MIN_TRAIN_COUNT                      : ClassVar[int]   =     1
-    MAX_TRAIN_COUNT                      : ClassVar[int]   = 10000
+    MIN_TRAIN_COUNT: ClassVar[int]                       = 1
+    MAX_TRAIN_COUNT: ClassVar[int]                       = 10000
 
-    MIN_INTER_TRAIN_INTERVAL_S           : ClassVar[float] =   0.0
-    MAX_INTER_TRAIN_INTERVAL_S           : ClassVar[float] = 3600.0
+    MIN_INTER_TRAIN_INTERVAL_S: ClassVar[float]          = 0.0
+    MAX_INTER_TRAIN_INTERVAL_S: ClassVar[float]          = 3600.0
 
-    # ——— 4) Private backing fields (no __init__) ———
-    _subject_mt_percent       : float         = field(init=False, repr=False)
-    _intensity_percent_of_mt  : float         = field(init=False, repr=False)
-    _frequency_hz             : float         = field(init=False, repr=False)
-    _pulses_per_train         : int           = field(init=False, repr=False)
-    _train_count              : int           = field(init=False, repr=False)
-    _inter_train_interval_s   : float         = field(init=False, repr=False)
-    _absolute_output_percent  : float         = field(init=False, repr=False)
-    _description              : Optional[str] = field(init=False, repr=False)
-    _target_region            : str           = field(init=False, repr=False)
+    MIN_RAMP_FRACTION: ClassVar[float]                   = 0.7
+    MAX_RAMP_FRACTION: ClassVar[float]                   = 1.0
 
+    MIN_RAMP_STEPS: ClassVar[int]                        = 1
+    MAX_RAMP_STEPS: ClassVar[int]                        = 10
+
+    # ——— 4) Private backing fields ———
+    _subject_mt_percent: float          = field(init=False, repr=False)
+    _intensity_percent_of_mt: float     = field(init=False, repr=False)
+    _frequency_hz: float                = field(init=False, repr=False)
+    _pulses_per_train: int              = field(init=False, repr=False)
+    _train_count: int                   = field(init=False, repr=False)
+    _inter_train_interval_s: float      = field(init=False, repr=False)
+    _absolute_output_percent: float     = field(init=False, repr=False)
+    _target_region: str                 = field(init=False, repr=False)
+    _description: Optional[str]         = field(init=False, repr=False)
+    _ramp_fraction: float               = field(init=False, repr=False)
+    _ramp_steps: int                    = field(init=False, repr=False)
 
     def __post_init__(self):
-        # Force every constructor argument through the setter logic:
+        # funnel constructor args through setters
         self.subject_mt_percent      = self.subject_mt_percent
         self.description             = self.description
         self.target_region           = self.target_region
 
+        # absolute vs. relative linkage
         if self._absolute_output_init is not None:
             self.absolute_output_percent = self._absolute_output_init
         else:
@@ -72,6 +81,14 @@ class TMSProtocol:
         self.train_count              = self.train_count
         self.inter_train_interval_s   = self.inter_train_interval_s
 
+        # new ramp args
+        self.ramp_fraction            = self.ramp_fraction
+        self.ramp_steps               = self.ramp_steps
+
+    # ——— Helper: simple clamp ———
+    def _clamp(self, val: float | int, lo: float | int, hi: float | int) -> float | int:
+        """Return val clamped to [lo, hi]."""
+        return lo if val < lo else hi if val > hi else val
 
     # ——— subject_mt_percent ———
     @property
@@ -79,18 +96,18 @@ class TMSProtocol:
         return self._subject_mt_percent
 
     @subject_mt_percent.setter
-    def subject_mt_percent(self, value: float):
-        if value < self.MIN_MT_PERCENT or value > self.MAX_MT_PERCENT:
-            raise ValueError(
-                f"subject_mt_percent must be in "
-                f"[{self.MIN_MT_PERCENT}, {self.MAX_MT_PERCENT}]%"
+    def subject_mt_percent(self, val: float):
+        v = self._clamp(val, self.MIN_MT_PERCENT, self.MAX_MT_PERCENT)
+        self._subject_mt_percent = v
+        # if intensity is already set, clamp it into its new dynamic range
+        if hasattr(self, "_intensity_percent_of_mt"):
+            self._intensity_percent_of_mt = self._clamp(
+                self._intensity_percent_of_mt,
+                self.MIN_RELATIVE_INTENSITY_PERCENT,
+                self.max_intensity_percent_of_mt
             )
-        self._subject_mt_percent = value
-        # clamp relative intensity if it now exceeds the dynamic max
-        if hasattr(self, "_intensity_percent_of_mt") \
-           and self._intensity_percent_of_mt > self.max_intensity_percent_of_mt:
-            self._intensity_percent_of_mt = self.max_intensity_percent_of_mt
-
+            # update absolute too
+            self._absolute_output_percent = (v * self._intensity_percent_of_mt) / 100.0
 
     # ——— intensity_percent_of_mt ———
     @property
@@ -98,23 +115,18 @@ class TMSProtocol:
         return self._intensity_percent_of_mt
 
     @intensity_percent_of_mt.setter
-    def intensity_percent_of_mt(self, value: float):
+    def intensity_percent_of_mt(self, val: float):
         min_r = self.MIN_RELATIVE_INTENSITY_PERCENT
         max_r = self.max_intensity_percent_of_mt
-        if value < min_r or value > max_r:
-            raise ValueError(
-                f"intensity_percent_of_mt must be in [{min_r}, {max_r}]% of MT"
-            )
-        self._intensity_percent_of_mt = value
+        v = self._clamp(val, min_r, max_r)
+        self._intensity_percent_of_mt = v
         # update absolute
-        self._absolute_output_percent = (self._subject_mt_percent * value) / 100.0
+        self._absolute_output_percent = (self._subject_mt_percent * v) / 100.0
 
     @property
     def max_intensity_percent_of_mt(self) -> float:
-        # dynamic upper‐bound so |absolute| ≤ 100%
         dyn = 100.0 * 100.0 / self._subject_mt_percent
         return min(self.MAX_RELATIVE_INTENSITY_PERCENT_STATIC, dyn)
-
 
     # ——— absolute_output_percent ———
     @property
@@ -122,24 +134,15 @@ class TMSProtocol:
         return self._absolute_output_percent
 
     @absolute_output_percent.setter
-    def absolute_output_percent(self, value: float):
-        if value < self.MIN_ABSOLUTE_OUTPUT_PERCENT \
-           or value > self.MAX_ABSOLUTE_OUTPUT_PERCENT:
-            raise ValueError(
-                f"absolute_output_percent must be in "
-                f"[{self.MIN_ABSOLUTE_OUTPUT_PERCENT}, "
-                f"{self.MAX_ABSOLUTE_OUTPUT_PERCENT}]%"
-            )
-        # derive new relative intensity
-        rel = (value / self._subject_mt_percent) * 100.0
-        if rel > self.max_intensity_percent_of_mt:
-            raise ValueError(
-                "absolute_output_percent would force "
-                "intensity_percent_of_mt above dynamic max"
-            )
-        self._absolute_output_percent     = value
-        self._intensity_percent_of_mt     = rel
-
+    def absolute_output_percent(self, val: float):
+        # clamp to hardware range first
+        v_abs = self._clamp(val, self.MIN_ABSOLUTE_OUTPUT_PERCENT, self.MAX_ABSOLUTE_OUTPUT_PERCENT)
+        # then ensure it doesn't force relative above its max
+        max_allowed_abs = (self._subject_mt_percent * self.max_intensity_percent_of_mt) / 100.0
+        v_abs = self._clamp(v_abs, self.MIN_ABSOLUTE_OUTPUT_PERCENT, max_allowed_abs)
+        self._absolute_output_percent = v_abs
+        # mirror back into intensity
+        self._intensity_percent_of_mt = (v_abs / self._subject_mt_percent) * 100.0
 
     # ——— frequency_hz ———
     @property
@@ -147,14 +150,9 @@ class TMSProtocol:
         return self._frequency_hz
 
     @frequency_hz.setter
-    def frequency_hz(self, value: float):
-        if value < self.MIN_FREQUENCY_HZ or value > self.MAX_FREQUENCY_HZ:
-            raise ValueError(
-                f"frequency_hz must be in "
-                f"[{self.MIN_FREQUENCY_HZ}, {self.MAX_FREQUENCY_HZ}]"
-            )
-        self._frequency_hz = value
-
+    def frequency_hz(self, val: float):
+        v = self._clamp(val, self.MIN_FREQUENCY_HZ, self.MAX_FREQUENCY_HZ)
+        self._frequency_hz = v
 
     # ——— pulses_per_train ———
     @property
@@ -162,15 +160,9 @@ class TMSProtocol:
         return self._pulses_per_train
 
     @pulses_per_train.setter
-    def pulses_per_train(self, value: int):
-        if value < self.MIN_PULSES_PER_TRAIN \
-           or value > self.MAX_PULSES_PER_TRAIN:
-            raise ValueError(
-                f"pulses_per_train must be in "
-                f"[{self.MIN_PULSES_PER_TRAIN}, {self.MAX_PULSES_PER_TRAIN}]"
-            )
-        self._pulses_per_train = value
-
+    def pulses_per_train(self, val: int):
+        v = int(self._clamp(val, self.MIN_PULSES_PER_TRAIN, self.MAX_PULSES_PER_TRAIN))
+        self._pulses_per_train = v
 
     # ——— train_count ———
     @property
@@ -178,14 +170,9 @@ class TMSProtocol:
         return self._train_count
 
     @train_count.setter
-    def train_count(self, value: int):
-        if value < self.MIN_TRAIN_COUNT or value > self.MAX_TRAIN_COUNT:
-            raise ValueError(
-                f"train_count must be in "
-                f"[{self.MIN_TRAIN_COUNT}, {self.MAX_TRAIN_COUNT}]"
-            )
-        self._train_count = value
-
+    def train_count(self, val: int):
+        v = int(self._clamp(val, self.MIN_TRAIN_COUNT, self.MAX_TRAIN_COUNT))
+        self._train_count = v
 
     # ——— inter_train_interval_s ———
     @property
@@ -193,16 +180,9 @@ class TMSProtocol:
         return self._inter_train_interval_s
 
     @inter_train_interval_s.setter
-    def inter_train_interval_s(self, value: float):
-        if (value < self.MIN_INTER_TRAIN_INTERVAL_S
-            or value > self.MAX_INTER_TRAIN_INTERVAL_S):
-            raise ValueError(
-                f"inter_train_interval_s must be in "
-                f"[{self.MIN_INTER_TRAIN_INTERVAL_S}, "
-                f"{self.MAX_INTER_TRAIN_INTERVAL_S}]"
-            )
-        self._inter_train_interval_s = value
-
+    def inter_train_interval_s(self, val: float):
+        v = self._clamp(val, self.MIN_INTER_TRAIN_INTERVAL_S, self.MAX_INTER_TRAIN_INTERVAL_S)
+        self._inter_train_interval_s = v
 
     # ——— target_region ———
     @property
@@ -210,11 +190,8 @@ class TMSProtocol:
         return self._target_region
 
     @target_region.setter
-    def target_region(self, value: str):
-        if not isinstance(value, str):
-            raise ValueError("target_region must be a string")
-        self._target_region = value
-
+    def target_region(self, val: str):
+        self._target_region = str(val)
 
     # ——— description ———
     @property
@@ -222,11 +199,8 @@ class TMSProtocol:
         return self._description
 
     @description.setter
-    def description(self, value: Optional[str]):
-        if value is not None and not isinstance(value, str):
-            raise ValueError("description must be a string or None")
-        self._description = value
-
+    def description(self, val: Optional[str]):
+        self._description = None if val is None else str(val)
 
     # ——— Summary metrics ———
     def total_pulses(self) -> int:
@@ -237,11 +211,43 @@ class TMSProtocol:
         rest = self.inter_train_interval_s * (self.train_count - 1)
         return stim * self.train_count + rest
 
+    # ——— NEW: ramp properties & helper ———
+    @property
+    def ramp_fraction(self) -> float:
+        return self._ramp_fraction
+
+    @ramp_fraction.setter
+    def ramp_fraction(self, val: float):
+        v = self._clamp(val, self.MIN_RAMP_FRACTION, self.MAX_RAMP_FRACTION)
+        self._ramp_fraction = v
+
+    @property
+    def ramp_steps(self) -> int:
+        return self._ramp_steps
+
+    @ramp_steps.setter
+    def ramp_steps(self, val: int):
+        v = int(self._clamp(val, self.MIN_RAMP_STEPS, self.MAX_RAMP_STEPS))
+        self._ramp_steps = v
+
+    def compute_ramp_curve_bytes(self) -> Tuple[int, int]:
+        """
+        Returns the two data-bytes for the 171-118 packet:
+
+        hi = floor(((factor - 1) * 10000) / 100)
+        lo = ((factor - 1) * 10000) % 100
+
+        where factor = (1 / ramp_fraction) ** (1 / ramp_steps).
+        """
+        factor = pow(1.0 / self._ramp_fraction, 1.0 / self._ramp_steps)
+        flat   = int((factor - 1.0) * 10000)
+        return (flat // 100, flat % 100)
+
 
 
 @dataclass
 class ProtocolManager:
-    """Holds, JSON‐loads/saves, and queries many TMSProtocol instances."""
+    """Holds, JSON-loads/saves, and queries many TMSProtocol instances."""
     protocols: List[TMSProtocol] = field(default_factory=list)
 
     def add_protocol(self, p: TMSProtocol) -> None:
@@ -270,9 +276,4 @@ class ProtocolManager:
     def load_from_json(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        # Each dict must have exactly the keys:
-        #   name, subject_mt_percent, intensity_percent_of_mt,
-        #   frequency_hz, pulses_per_train, train_count,
-        #   inter_train_interval_s, target_region
-        # (and optionally) description, absolute_output_percent
         self.protocols = [TMSProtocol(**entry) for entry in data]
