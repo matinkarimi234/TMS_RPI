@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, 
     QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame
 )
+from PySide6.QtGui import QFontDatabase, QFont
 
 PROJECT_ROOT = Path(__file__).parent.resolve()
 sys.path.append(str(PROJECT_ROOT / 'src'))
@@ -123,6 +124,17 @@ class DemoWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+
+    # Load and register your font
+    font_id = QFontDatabase.addApplicationFont("assets/fonts/Tw-Cen-MT-Condensed.ttf")
+
+    family = QFontDatabase.applicationFontFamilies(font_id)[0]
+    print(f"Loaded font family: {family}")
+
+    # Set default application font (optional)
+    app.setFont(QFont(family))
+
     window = DemoWindow()
     window.show()
     sys.exit(app.exec())

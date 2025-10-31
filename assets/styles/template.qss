@@ -1,38 +1,38 @@
-/* 
-    This is the main template stylesheet for the application.
-    It uses placeholders like {{BACKGROUND_COLOR}} which will be
-    replaced by the ThemeManager based on the loaded JSON theme.
-*/
-
-/* General styling for all QWidgets, setting the base background */
+/* ─────────────────────────────────────────────────────────────── */
+/* 1) GENERIC STYLING (apply to all widgets first)                */
 QWidget {
     background-color: {{BACKGROUND_COLOR}};
-    color: {{TEXT_COLOR}};
-    font-family: "Segoe UI";
+    color:            {{TEXT_COLOR}};
+    font-family:      "Tw Cen MT Condensed";
 }
 
-/* PulseBarsWidget specific styling */
+QLabel {
+    color:           {{TEXT_COLOR}};
+    border:          none;
+}
+
+/* ─────────────────────────────────────────────────────────────── */
+/* 2) PulseBarsWidget specific styling                            */
 PulseBarsWidget {
     background-color: {{BACKGROUND_COLOR}};
-    border: 1px solid {{BORDER_COLOR}};
-    border-radius: 4px;
+    border:           1px solid {{BORDER_COLOR}};
+    border-radius:    4px;
 }
 
 PulseBarsWidget QWidget#controlPanel {
     background-color: {{BACKGROUND_COLOR}};
-    border-left: 1px solid {{BORDER_COLOR}};
-    padding: 12px;
+    border-left:     1px solid {{BORDER_COLOR}};
+    padding:         12px;
 }
 
-/* Status labels in control panel */
 PulseBarsWidget QLabel#statusLabel,
 PulseBarsWidget QLabel#timeLabel {
     background-color: rgba(255, 255, 255, 0.05);
-    border: 1px solid {{BORDER_COLOR}};
-    border-radius: 4px;
-    padding: 6px 8px;
-    margin: 2px 0;
-    font-size: 11px;
+    border:           1px solid {{BORDER_COLOR}};
+    border-radius:    4px;
+    padding:          6px 8px;
+    margin:           2px 0;
+    font-size:        11px;
 }
 
 PulseBarsWidget QLabel#statusLabel {
@@ -40,62 +40,54 @@ PulseBarsWidget QLabel#statusLabel {
 }
 
 PulseBarsWidget QLabel#timeLabel {
-    color: {{TEXT_COLOR}};
+    color:       {{TEXT_COLOR}};
     font-weight: bold;
 }
 
-/* Button styling for PulseBarsWidget controls */
 PulseBarsWidget QPushButton#startButton,
 PulseBarsWidget QPushButton#stopButton {
     background-color: {{ACCENT_COLOR}};
-    color: {{TEXT_COLOR_SELECTED}};
-    border: none;
-    padding: 10px 16px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    margin: 4px 0;
-    min-height: 32px;
+    color:            {{TEXT_COLOR_SELECTED}};
+    border:           none;
+    padding:          10px 16px;
+    border-radius:    4px;
+    font-size:        12px;
+    font-weight:      500;
+    margin:           4px 0;
+    min-height:       32px;
 }
 
 PulseBarsWidget QPushButton#startButton:hover,
 PulseBarsWidget QPushButton#stopButton:hover {
     background-color: {{ACCENT_COLOR}};
-    opacity: 0.9;
+    opacity:          0.9;
 }
 
 PulseBarsWidget QPushButton#startButton:pressed,
 PulseBarsWidget QPushButton#stopButton:pressed {
     background-color: {{ACCENT_COLOR}};
-    opacity: 0.7;
+    opacity:          0.7;
 }
 
+PulseBarsWidget QPushButton#startButton:disabled,
 PulseBarsWidget QPushButton#stopButton:disabled {
     background-color: {{BORDER_COLOR}};
-    color: {{TEXT_COLOR_SECONDARY}};
+    color:            {{TEXT_COLOR_SECONDARY}};
 }
 
-PulseBarsWidget QPushButton#startButton:disabled {
-    background-color: {{BORDER_COLOR}};
-    color: {{TEXT_COLOR_SECONDARY}};
-}
-
-/* Styling for our custom NavigationListWidget */
+/* ─────────────────────────────────────────────────────────────── */
+/* 3) NavigationListWidget specific rules                         */
 NavigationListWidget {
-    border: 1px solid {{BORDER_COLOR}};
+    border:        1px solid {{BORDER_COLOR}};
     border-radius: 4px;
 }
 
-/* 
-*/
 NavigationListWidget QWidget {
     background-color: transparent;
 }
 
-
-/* This is the key part for the selection highlight */
 NavigationListWidget::item {
-    /* Remove the default dotted border when an item is selected */
+    /* remove default focus border */
     border: none;
 }
 
@@ -103,66 +95,56 @@ NavigationListWidget::item:selected {
     background-color: {{ACCENT_COLOR}};
 }
 
-/* 
-    This is a powerful general rule: ANY QLabel inside a selected item
-    will have its text color changed. This covers all three of our labels.
-*/
+/* all labels in a selected item turn white (or TEXT_COLOR_SELECTED) */
 NavigationListWidget::item:selected QLabel {
     color: {{TEXT_COLOR_SELECTED}};
 }
 
 /* --- Specific Label Styling for UNSELECTED items --- */
-
 #ListItemTitleLabel {
-    font-size: 18px;
+    font-size:   25px;
     font-weight: bold;
-    color: {{TEXT_COLOR}};
+    color:       {{TEXT_COLOR}};
 }
 
 #ListItemValueLabel {
-    font-size: 18px;
+    font-size:   22px;
     font-weight: bold;
-    color: {{TEXT_COLOR}};
+    color:       {{TEXT_COLOR}};
 }
-
-#ListItemBoundsLabel {
-    font-size: 12px;
+QLabel#ListItemBoundsLabel {
+    font-size: 17px;
     color: {{TEXT_COLOR_SECONDARY}};
 }
 
 
-/* --- General Widget Styling --- */
-
+/* ─────────────────────────────────────────────────────────────── */
+/* 4) General QPushButton styling                                 */
 QPushButton {
     background-color: {{ACCENT_COLOR}};
-    color: {{TEXT_COLOR_SELECTED}};
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-size: 14px;
+    color:            {{TEXT_COLOR_SELECTED}};
+    border:           none;
+    padding:          8px 16px;
+    border-radius:    4px;
+    font-size:        20px;
 }
 
 QPushButton:hover {
     background-color: {{ACCENT_COLOR}};
-    opacity: 0.9;
+    opacity:          0.9;
 }
 
 QPushButton:pressed {
     background-color: {{ACCENT_COLOR}};
-    opacity: 0.7;
+    opacity:          0.7;
 }
 
+/* ─────────────────────────────────────────────────────────────── */
+/* 5) Other globals                                                */
 QMainWindow {
     background-color: {{BACKGROUND_COLOR}};
 }
 
-/* Additional general styling */
-QLabel {
-    color: {{TEXT_COLOR}};
-}
-
 QFrame {
-    border: 1px solid {{BORDER_COLOR}};
-    border-radius: 4px;
     background-color: {{BACKGROUND_COLOR}};
 }

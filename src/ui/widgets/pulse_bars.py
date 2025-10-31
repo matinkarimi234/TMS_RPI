@@ -259,28 +259,65 @@ class PulseBarsWidget(QWidget):
     def _stop(self):
         self.graph.stop()
 
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
+sys.path.append(str(PROJECT_ROOT / "src")) 
+
+from app.theme_manager import ThemeManager
+
+
+        
+
 
 # ---- demo
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    # 1) create theme manager, point at your QSS template and JSON folder
+    tm = ThemeManager(
+        template_path=Path(PROJECT_ROOT / "assets" / "styles" / "template.qss"),
+        themes_dir=Path(PROJECT_ROOT / "src" / "config")
+    )
+
+   # 2) store current theme in a mutable container
+    current_theme = ["dark"]
+
+    # 3) helper to apply both QSS and QPalette
+    def apply_theme(name: str):
+        qss = tm.generate_stylesheet(name)
+        palette = tm.generate_palette(name)
+        app.setStyleSheet(qss)
+        app.setPalette(palette)
+
+    # 4) apply initial theme
+    apply_theme(current_theme[0])
+
+    # 5) create your widget
     w = PulseBarsWidget()
-    pal = app.palette()
-    pal.setColor(QPalette.Base, QColor("#3c3c3c"))
-    pal.setColor(QPalette.Text, QColor("#c8c8c8"))
-    pal.setColor(QPalette.Mid,  QColor("#c8c8c8"))   # grid / faint lines
-    pal.setColor(QPalette.Accent, QColor("#32CD32"))
-    app.setPalette(pal)
     w.setWindowTitle("TMS Graph + Countdown — PySide6")
-    # photo-like defaults
-    w.set_protocol(repeats=3, train_duration_s=0.5, inter_train_interval_s=0.5, bursts_per_train=3)
+    
+    # … your existing setup …
+    w.set_protocol(repeats=3, train_duration_s=0.5,
+                   inter_train_interval_s=0.5, bursts_per_train=3)
     w.set_annotations(top="50.0", mid="120", train="19.3", gap="60")
     w.graph.hide_cursor_between_loops = True
-    # pause between loops (uses inter_train_interval_s if None)
-    w.set_loop_pause(seconds= 4, margin = 8)
-    # optional: place the circle
-    w.graph.countdown_pos = "bottom_right"      # "top_left" | "bottom_right" | "bottom_left"
+    w.set_loop_pause(seconds=4, margin=8)
+    w.graph.countdown_pos = "bottom_right"
     w.resize(400, 320)
-    
+
+    # ──────────────── Toggle‐Theme Button ────────────────
+    theme_button = QPushButton("Toggle Theme", w)
+    theme_button.move(16, w.height() - 48)
+
+    def toggle_theme():
+        # flip between 'dark' and 'light'
+        current_theme[0] = "light" if current_theme[0] == "dark" else "dark"
+        apply_theme(current_theme[0])
+
+    theme_button.clicked.connect(toggle_theme)
+    theme_button.show()
+    # ────────────────────────────────────────────────────
+
     w.show()
     w._start()
     sys.exit(app.exec())
