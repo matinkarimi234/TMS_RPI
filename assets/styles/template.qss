@@ -148,3 +148,26 @@ QMainWindow {
 QFrame {
     background-color: {{BACKGROUND_COLOR}};
 }
+
+
+/* ─────────────────────────────────────────────────────────────── */
+/* 9) ConnectionIndicator styling                                 */
+ConnectionIndicator#connectionIndicator {
+    /* default = disconnected */
+    background-color: {{DISCONNECTED_RED}};
+    border-radius:    8px;
+    min-width:        16px;
+    min-height:       16px;
+}
+
+ConnectionIndicator#connectionIndicator[state="connected"] {
+    background-color: {{CONNECTED_GREEN}};
+}
+
+ConnectionIndicator#connectionIndicator[state="disconnected"] {
+    background-color: {{DISCONNECTED_RED}};
+}
+
+ConnectionIndicator#connectionIndicator[blink="true"] {
+    background-color: {{ACCENT_COLOR}} !important;
+}
