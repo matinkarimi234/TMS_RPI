@@ -1,140 +1,350 @@
+# demo.py
 import sys
 from pathlib import Path
+
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, 
-    QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFrame
+    QApplication, QMainWindow, QStackedWidget, QWidget,
+    QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget
 )
 from PySide6.QtGui import QFontDatabase, QFont
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtWidgets import QSizePolicy
 
+# ─── allow imports from src/ ────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.resolve()
-sys.path.append(str(PROJECT_ROOT / 'src'))
+SRC = PROJECT_ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
+# ─── your existing modules under src/ ─────────────────────────
 from app.theme_manager import ThemeManager
+from core.protocol_manager import ProtocolManager, TMSProtocol
 from ui.widgets.navigation_list_widget import NavigationListWidget
 
-class DemoWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("TMS Control Interface")
-        self.setGeometry(100, 100, 320, 480)
+# ───────────────────────────────────────────────────────────────
+class ParamsPage(QWidget):
+    """
+    Shows all numeric fields of the current TMSProtocol in a NavigationListWidget.
+    Each row displays: Title | Value | unit (min–max)
+    """
+    request_protocol_list = Signal()
 
-        template_path = PROJECT_ROOT / "assets" / "styles" / "template.qss"
-        themes_dir = PROJECT_ROOT / "src" / "config"
-        self.theme_manager = ThemeManager(template_path=template_path, themes_dir=themes_dir)
-        self.current_theme = "dark"
-        
-        central_widget = QWidget()
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+    def __init__(self, theme_manager: ThemeManager, initial_theme="dark", parent=None):
+        super().__init__(parent)
+        self.theme_manager = theme_manager
 
-        # --- Create and Populate the List Widget (with new signature) ---
+        self.current_theme = initial_theme
+        ss = self.theme_manager.generate_stylesheet(self.current_theme)
+        if ss:
+            QApplication.instance().setStyleSheet(ss)
+
+
+        self.current_protocol: TMSProtocol | None = None
+
+        # Header
+        self.lbl_name = QLabel("Protocol: <none>")
+        self.lbl_desc = QLabel("Description: <none>")
+
+        # NavigationListWidget
         self.list_widget = NavigationListWidget()
-        self.list_widget.add_item("Intensity", 80, "0 ~ 100 %", data={"key": "intensity"})
-        self.list_widget.add_item("Frequency", 10, "1 ~ 20 Hz", data={"key": "frequency"})
-        self.list_widget.add_item("Pulse Count", 50, "10 ~ 100", data={"key": "pulse_count"})
-        self.list_widget.add_item("Repeat Times", 2, "1 ~ 3", data={"key": "repeat_times"})
+
+        # Define each param with (label, key, lo, hi, unit)
+        params = [
+            ("MT Threshold (%)",
+             "subject_mt_percent",
+             TMSProtocol.MIN_MT_PERCENT,
+             TMSProtocol.MAX_MT_PERCENT,
+             "%"),
+            ("Intensity (% of MT)",
+             "intensity_percent_of_mt",
+             TMSProtocol.MIN_RELATIVE_INTENSITY_PERCENT,
+             None,  # dynamic max at runtime
+             "%"),
+            ("Frequency (Hz)",
+             "frequency_hz",
+             TMSProtocol.MIN_FREQUENCY_HZ,
+             TMSProtocol.MAX_FREQUENCY_HZ,
+             "Hz"),
+            ("Pulses per Train",
+             "pulses_per_train",
+             TMSProtocol.MIN_PULSES_PER_TRAIN,
+             TMSProtocol.MAX_PULSES_PER_TRAIN,
+             ""),
+            ("Train Count",
+             "train_count",
+             TMSProtocol.MIN_TRAIN_COUNT,
+             TMSProtocol.MAX_TRAIN_COUNT,
+             ""),
+            ("Inter-train Interval (s)",
+             "inter_train_interval_s",
+             TMSProtocol.MIN_INTER_TRAIN_INTERVAL_S,
+             TMSProtocol.MAX_INTER_TRAIN_INTERVAL_S,
+             "s"),
+            ("Ramp Fraction",
+             "ramp_fraction",
+             TMSProtocol.MIN_RAMP_FRACTION,
+             TMSProtocol.MAX_RAMP_FRACTION,
+             ""),
+            ("Ramp Steps",
+             "ramp_steps",
+             TMSProtocol.MIN_RAMP_STEPS,
+             TMSProtocol.MAX_RAMP_STEPS,
+             ""),
+        ]
+
+        # Add every item with initial value=0 and empty suffix.
+        # Store lo, hi, unit in the item’s data payload.
+        for label, key, lo, hi, unit in params:
+            self.list_widget.add_item(
+                title = label,
+                value = 0,
+                bounds= "",
+                data = {
+                    "key":  key,
+                    "lo":   lo,
+                    "hi":   hi,
+                    "unit": unit
+                }
+            )
+
         self.list_widget.setCurrentRow(0)
-        
-        main_layout.addWidget(self.list_widget, stretch=1)
 
-        # --- Control Buttons ---
-        # Group for Navigation
-        nav_box = QVBoxLayout()
-        nav_box.addWidget(QLabel("Item Navigation"))
-        nav_buttons = QHBoxLayout()
-        prev_button = QPushButton("Up")
-        next_button = QPushButton("Down")
-        nav_buttons.addWidget(prev_button)
-        nav_buttons.addWidget(next_button)
-        nav_box.addLayout(nav_buttons)
-        main_layout.addLayout(nav_box)
+        # Up / Down navigation
+        btn_up   = QPushButton("Up")
+        btn_down = QPushButton("Down")
+        btn_up.clicked.connect(self.list_widget.select_previous)
+        btn_down.clicked.connect(self.list_widget.select_next)
+        nav_box = QHBoxLayout()
+        nav_box.addWidget(btn_up)
+        nav_box.addWidget(btn_down)
 
-        # Group for Value Editing
-        edit_box = QVBoxLayout()
-        edit_box.addWidget(QLabel("Value Editing (for selected item)"))
-        edit_buttons = QHBoxLayout()
-        decrease_button = QPushButton("- Decrease")
-        increase_button = QPushButton("+ Increase")
-        edit_buttons.addWidget(decrease_button)
-        edit_buttons.addWidget(increase_button)
-        edit_box.addLayout(edit_buttons)
-        main_layout.addLayout(edit_box)
-        
-        # Separator Line
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        main_layout.addWidget(line)
+        # + / − buttons
+        btn_dec = QPushButton("- Decrease")
+        btn_inc = QPushButton("+ Increase")
+        btn_dec.clicked.connect(lambda: self._modify_value(-1))
+        btn_inc.clicked.connect(lambda: self._modify_value(+1))
+        edit_box = QHBoxLayout()
+        edit_box.addWidget(btn_dec)
+        edit_box.addWidget(btn_inc)
 
-        theme_button = QPushButton("Toggle Theme")
-        main_layout.addWidget(theme_button)
-        
-        self.setCentralWidget(central_widget)
+        # Bottom controls
+        self.btn_select_protocol = QPushButton("Select Protocol")
+        self.btn_select_protocol.clicked.connect(
+            lambda: self.request_protocol_list.emit()
+        )
+        self.btn_toggle_theme = QPushButton("Toggle Theme")
+        self.btn_toggle_theme.clicked.connect(self._toggle_theme)
 
-        # --- Connect Signals ---
-        prev_button.clicked.connect(self.list_widget.select_previous)
-        next_button.clicked.connect(self.list_widget.select_next)
-        theme_button.clicked.connect(self.toggle_theme)
-        increase_button.clicked.connect(self.increase_selected_value)
-        decrease_button.clicked.connect(self.decrease_selected_value)
+        bottom = QHBoxLayout()
+        bottom.addWidget(self.btn_select_protocol)
+        bottom.addStretch(1)
+        bottom.addWidget(self.btn_toggle_theme)
 
-        self.apply_theme(self.current_theme)
+        # Layout everything
+        main_lay = QVBoxLayout(self)
+        main_lay.addWidget(self.lbl_name)
+        main_lay.addWidget(self.lbl_desc)
+        main_lay.addWidget(self.list_widget, stretch=1)
+        main_lay.addLayout(nav_box)
+        main_lay.addLayout(edit_box)
+        main_lay.addLayout(bottom)
 
-    def change_selected_value(self, amount: int):
-        """Generic function to change the selected item's value."""
-        current_item = self.list_widget.currentItem()
-        if not current_item:
+    def set_protocol(self, proto: TMSProtocol):
+        """Load a TMSProtocol and update all values + suffixes."""
+        self.current_protocol = proto
+        self.lbl_name.setText(f"Protocol: {proto.name}")
+        desc = proto.description or "<none>"
+        self.lbl_desc.setText(f"Description: {desc}")
+
+        def fmt(x):
+            # Choose formatting: one decimal for floats, integer otherwise
+            return f"{x:.1f}" if isinstance(x, float) else str(x)
+
+        for row in range(self.list_widget.count()):
+            item    = self.list_widget.item(row)
+            meta    = item.data(Qt.UserRole) or {}
+            key     = meta.get("key")
+            lo      = meta.get("lo")
+            hi      = meta.get("hi")
+            unit    = meta.get("unit", "")
+
+            widget = self.list_widget.itemWidget(item)
+            if not key or widget is None:
+                continue
+
+            # 1) pull the actual, clamped value
+            val = getattr(proto, key)
+            widget.set_value(val)
+
+            # 2) build suffix:
+            #    for intensity, hi is dynamic from the protocol
+            if key == "intensity_percent_of_mt":
+                hi_act = proto.max_intensity_percent_of_mt
+            else:
+                hi_act = hi
+
+            s = f"{unit}   ( {fmt(lo)} – {fmt(hi_act)} )"
+            widget.set_suffix(s)
+
+    def _modify_value(self, delta: int):
+        """On +/−: write to TMSProtocol (clamps internally), then read back."""
+        if not self.current_protocol:
             return
-
-        # Get the custom widget we embedded into the list item
-        widget = self.list_widget.itemWidget(current_item)
-        if not widget:
+        item = self.list_widget.currentItem()
+        if not item:
+            return
+        meta = item.data(Qt.UserRole) or {}
+        key = meta.get("key")
+        widget = self.list_widget.itemWidget(item)
+        if not key or widget is None:
             return
 
         try:
-            current_value = int(widget.get_value())
-            new_value = current_value + amount
-            
-            # Here you would add logic to check against the bounds!
-            # For this demo, we'll just change it.
-            
-            # Use the widget's own method to update its display
-            widget.set_value(new_value)
+            cur = float(widget.get_value())
         except (ValueError, TypeError):
-            # Handle cases where the value is not a number
-            print(f"Cannot change value for '{widget.get_title()}' as it's not a number.")
-            
-    def increase_selected_value(self):
-        self.change_selected_value(1)
+            return
 
-    def decrease_selected_value(self):
-        self.change_selected_value(-1)
+        # write into the dataclass setter (it enforces bounds)
+        setattr(self.current_protocol, key, cur + delta)
+        # read back and update
+        actual = getattr(self.current_protocol, key)
+        widget.set_value(actual)
 
-    def apply_theme(self, theme_name: str):
-        stylesheet = self.theme_manager.generate_stylesheet(theme_name)
-        if stylesheet:
-            QApplication.instance().setStyleSheet(stylesheet)
-            print(f"Applied '{theme_name}' theme.")
-
-    def toggle_theme(self):
+    def _toggle_theme(self):
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
-        self.apply_theme(self.current_theme)
+        ss = self.theme_manager.generate_stylesheet(self.current_theme)
+        if ss:
+            QApplication.instance().setStyleSheet(ss)
+
+
+# ───────────────────────────────────────────────────────────────
+class ProtocolListPage(QWidget):
+    accepted = Signal(str)
+    canceled = Signal()
+
+    def __init__(self, pm: ProtocolManager, parent=None):
+        super().__init__(parent)
+        self.pm = pm
+
+        self.list_widget = QListWidget()
+        self.list_widget.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding
+        )
+        self.list_widget.addItems(self.pm.list_protocols())
+        self.list_widget.setCurrentRow(0)
+
+        btn_up   = QPushButton("Up")
+        btn_down = QPushButton("Down")
+        btn_up.clicked.connect(self._up)
+        btn_down.clicked.connect(self._down)
+        nav = QHBoxLayout()
+        nav.addWidget(btn_up); nav.addWidget(btn_down)
+
+        btn_ok     = QPushButton("OK")
+        btn_cancel = QPushButton("Cancel")
+        btn_ok.clicked.connect(self._on_ok)
+        btn_cancel.clicked.connect(lambda: self.canceled.emit())
+        ctl = QHBoxLayout()
+        ctl.addWidget(btn_ok); ctl.addWidget(btn_cancel)
+
+        lay = QVBoxLayout(self)
+        lay.setSpacing(6)
+        lay.addWidget(self.list_widget)
+        lay.addLayout(nav)
+        lay.addLayout(ctl)
+        lay.setContentsMargins(15, 10, 15, 10)
+        lay.setSpacing(5)
+
+        lay.setStretch(0, 1)
+
+    def _up(self):
+        r = self.list_widget.currentRow()
+        if r > 0:
+            self.list_widget.setCurrentRow(r - 1)
+
+    def _down(self):
+        r = self.list_widget.currentRow()
+        if r < self.list_widget.count() - 1:
+            self.list_widget.setCurrentRow(r + 1)
+
+    def _on_ok(self):
+        item = self.list_widget.currentItem()
+        if item:
+            self.accepted.emit(item.text())
+
+
+# ───────────────────────────────────────────────────────────────
+class MainWindow(QMainWindow):
+    def __init__(self, protocol_json: Path, theme_manager: ThemeManager, initial_theme="dark"):
+        super().__init__()
+        self.setWindowTitle("TMS Control Interface")
+        self.resize(320, 480)
+
+        self.pm = ProtocolManager()
+        self.pm.load_from_json(protocol_json)
+
+        self.stack = QStackedWidget()
+        self.stack.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding
+        )
+        self.setCentralWidget(self.stack)
+
+        self.params = ParamsPage(theme_manager, initial_theme)
+        self.params.request_protocol_list.connect(self._show_list)
+
+        self.plist = ProtocolListPage(self.pm)
+        self.plist.accepted.connect(self._choose)
+        self.plist.canceled.connect(self._show_params)
+
+        self.stack.addWidget(self.params)
+        self.stack.addWidget(self.plist)
+        self._show_params()
+
+        self.resize(400, 600)
+        self.setMinimumSize(320, 480)
+
+        # load first protocol by default
+        names = self.pm.list_protocols()
+        if names:
+            self._load(names[0])
+
+    def _show_params(self):
+        self.stack.setCurrentWidget(self.params)
+
+    def _show_list(self):
+        self.stack.setCurrentWidget(self.plist)
+
+    def _choose(self, name: str):
+        self._load(name)
+        self._show_params()
+
+    def _load(self, name: str):
+        proto = self.pm.get_protocol(name)
+        if proto:
+            self.params.set_protocol(proto)
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-
-    # Load and register your font
+    # load your custom font
     font_id = QFontDatabase.addApplicationFont("assets/fonts/Tw-Cen-MT-Condensed.ttf")
+    families = QFontDatabase.applicationFontFamilies(font_id)
+    if families:
+        app.setFont(QFont(families[0]))
 
-    family = QFontDatabase.applicationFontFamilies(font_id)[0]
-    print(f"Loaded font family: {family}")
+    tpl         = PROJECT_ROOT / "assets" / "styles"   / "template.qss"
+    theme_dir   = SRC          / "config"
+    protocols_f = SRC          / "protocols.json"
 
-    # Set default application font (optional)
-    app.setFont(QFont(family))
+    theme_mgr = ThemeManager(template_path=tpl, themes_dir=theme_dir)
 
-    window = DemoWindow()
-    window.show()
+    w = MainWindow(protocol_json=protocols_f,
+                   theme_manager=theme_mgr,
+                   initial_theme="dark")
+    
+    w.show()
+
     sys.exit(app.exec())

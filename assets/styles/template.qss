@@ -149,6 +149,34 @@ QFrame {
     background-color: {{BACKGROUND_COLOR}};
 }
 
+QListWidget {
+    border:        1px solid {{BORDER_COLOR}};
+    border-radius: 4px;
+}
+
+QListView , QListWidget {
+    background-color: transparent;
+    font-size: 25pt;
+}
+
+QListView::item, QListWidget::item {
+    /* remove default focus border */
+    min-height: 48px;
+    border: none;
+    font-size:   25pt;
+    font-weight: bold;
+    color:       {{TEXT_COLOR}};
+}
+
+QListWidget::item:selected {
+    background-color: {{ACCENT_COLOR}};
+}
+
+/* all labels in a selected item turn white (or TEXT_COLOR_SELECTED) */
+QListWidget::item:selected QLabel {
+    color: {{TEXT_COLOR_SELECTED}};
+}
+
 
 /* ─────────────────────────────────────────────────────────────── */
 /* 9) ConnectionIndicator styling                                 */

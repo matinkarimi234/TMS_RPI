@@ -13,26 +13,27 @@ class ListItemWidget(QWidget):
         super().__init__(parent)
 
         # --- Create the three labels ---
-        self.title_label = QLabel(title)
-        self.value_label = QLabel(str(value))
+        self.title_label  = QLabel(title)
+        self.value_label  = QLabel(str(value))
         self.bounds_label = QLabel(bounds)
 
         # --- Set object names for QSS styling ---
-        self.title_label.setObjectName("ListItemTitleLabel")
-        self.value_label.setObjectName("ListItemValueLabel")
+        self.title_label .setObjectName("ListItemTitleLabel")
+        self.value_label .setObjectName("ListItemValueLabel")
         self.bounds_label.setObjectName("ListItemBoundsLabel")
         
         # The value should be right-aligned and vertically centered
-        self.value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignRight |
+                                      Qt.AlignmentFlag.AlignVCenter)
 
         # --- Use a GridLayout for precise positioning ---
         layout = QGridLayout(self)
         layout.setContentsMargins(15, 10, 15, 10)
         layout.setSpacing(5)
 
-        # Add widgets to the grid: widget, row, column
-        layout.addWidget(self.title_label, 0, 0)
-        layout.addWidget(self.value_label, 0, 1)
+        # Add widgets: widget, row, column
+        layout.addWidget(self.title_label,  0, 0)
+        layout.addWidget(self.value_label,  0, 1)
         layout.addWidget(self.bounds_label, 1, 0)
         
         # Make the first column expand, pushing the value to the right
@@ -42,22 +43,25 @@ class ListItemWidget(QWidget):
         self.setLayout(layout)
 
     def set_value(self, new_value):
-        """
-        Crucial method to allow external code (like the main window)
-        to update the value displayed by this widget.
-        """
+        """Update the centre value label."""
         self.value_label.setText(str(new_value))
 
     def get_value(self) -> str:
-        """Helper to retrieve the current value text."""
+        """Retrieve the current centre value text."""
         return self.value_label.text()
-    
+
     def get_title(self) -> str:
         return self.title_label.text()
         
     def get_bounds(self) -> str:
         return self.bounds_label.text()
 
+    def set_suffix(self, new_bounds: str):
+        """
+        Update the bottom‐left bounds/suffix label.
+        This is what demo.py was calling widget.set_suffix(...)
+        """
+        self.bounds_label.setText(new_bounds)
+
     def sizeHint(self) -> QSize:
-        # A slightly taller hint might be better for the new layout
         return QSize(200, 75)
