@@ -199,3 +199,48 @@ ConnectionIndicator#connectionIndicator[state="disconnected"] {
 ConnectionIndicator#connectionIndicator[blink="true"] {
     background-color: {{ACCENT_COLOR}} !important;
 }
+
+
+/* ─────────────────────────────────────────────────────────────── */
+/* MTSlider-specific QSS (applies only to the slider with id)     */
+QSlider#mtSlider::groove:horizontal {
+    height: 22px;
+    border-radius: 11px;
+    border-color: transparent;
+    background: {{BORDER_COLOR}};   /* track */
+}
+QSlider#mtSlider::sub-page:horizontal {
+    background: {{ACCENT_COLOR}};   /* filled */
+    border-color: transparent;
+    border-radius: 11px;
+}
+QSlider#mtSlider::add-page:horizontal {
+    background: {{BACKGROUND_COLOR}}; /* unfilled */
+    border-color: transparent;
+    border-radius: 11px;
+}
+QSlider#mtSlider::handle:horizontal {
+    width: 28px;
+    margin: -8px 0;
+    border-color: transparent;
+    background: {{ACCENT_COLOR}};
+    border-radius: 14px;
+}
+
+QLabel#mtSliderLeft { color: {{TEXT_COLOR_SECONDARY}}; }
+QLabel#mtSliderValue { font-weight: bold; }
+
+/* Labels inside MTSlider */
+QLabel#mtSliderLeft {
+    color: {{TEXT_COLOR_SECONDARY}};
+}
+QLabel#mtSliderValue {
+    font-weight: bold;
+}
+
+
+IntensityGauge {
+    qproperty-valueScale: 0.90;
+    qproperty-titleScale: 0.85;
+    qproperty-subtitleScale: 0.85;
+}

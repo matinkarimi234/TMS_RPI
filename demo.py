@@ -22,6 +22,10 @@ from app.theme_manager import ThemeManager
 from core.protocol_manager import ProtocolManager, TMSProtocol
 from ui.widgets.navigation_list_widget import NavigationListWidget
 from ui.widgets.pulse_bars_widget import PulseBarsWidget
+
+# NEW: add your widgets
+from ui.widgets.intensity_gauge import IntensityGauge
+from ui.widgets.mt_slider import MTSlider
 # ───────────────────────────────────────────────────────────────
 
 
@@ -29,10 +33,10 @@ class ParamsPage(QWidget):
     """
     Shows the currently selected TMSProtocol:
       - title/desc
-      - schematic waveform (PulseBarsWidget)
-      - editable param list (+/- navigation)
-      - theme toggle
-      - protocol chooser
+      - waveform schematic (PulseBarsWidget)
+      - left column: IntensityGauge + MTSlider
+      - editable param list (minus MT & Intensity) with nav/edit buttons
+      - theme toggle & protocol chooser
     """
     request_protocol_list = Signal()
 
@@ -47,23 +51,20 @@ class ParamsPage(QWidget):
         self.lbl_name = QLabel("Protocol: <none>")
         self.lbl_desc = QLabel("Description: <none>")
 
-        # ── PulseBarsWidget (waveform schematic + elapsed/remaining + start/stop) ─
-        self.pulse_widget = PulseBarsWidget(self)
-        # (palette will be applied after we build everything)
+        # ── Left column: Intensity gauge + MT slider ───────
+        self.intensity_gauge = IntensityGauge(self)
+        self.mt_slider = MTSlider(self)
 
-        # ── Parameter list ────────────────────────────────
+        # live updates back into the protocol
+        self.intensity_gauge.valueChanged.connect(self._on_intensity_changed)
+        self.mt_slider.valueChanged.connect(self._on_mt_changed)
+
+        # ── PulseBarsWidget (waveform schematic) ───────────
+        self.pulse_widget = PulseBarsWidget(self)
+
+        # ── Parameter list (MT & Intensity REMOVED) ────────
         self.list_widget = NavigationListWidget()
         params = [
-            ("MT Threshold (%)",
-             "subject_mt_percent",
-             TMSProtocol.MIN_MT_PERCENT,
-             TMSProtocol.MAX_MT_PERCENT,
-             "%"),
-            ("Intensity (% of MT)",
-             "intensity_percent_of_mt",
-             TMSProtocol.MIN_RELATIVE_INTENSITY_PERCENT,
-             None,  # dynamic max at runtime
-             "%"),
             ("Frequency (Hz)",
              "frequency_hz",
              TMSProtocol.MIN_FREQUENCY_HZ,
@@ -113,7 +114,7 @@ class ParamsPage(QWidget):
         nav_box.addWidget(btn_up)
         nav_box.addWidget(btn_down)
 
-        # ── + / − edit buttons ───────────────────────────
+        # ── + / − edit buttons (affect list params only) ──
         btn_dec = QPushButton("- Decrease")
         btn_inc = QPushButton("+ Increase")
         btn_dec.clicked.connect(lambda: self._modify_value(-1))
@@ -124,9 +125,7 @@ class ParamsPage(QWidget):
 
         # ── Bottom controls (protocol select, theme toggle) ─────────────────
         self.btn_select_protocol = QPushButton("Select Protocol")
-        self.btn_select_protocol.clicked.connect(
-            lambda: self.request_protocol_list.emit()
-        )
+        self.btn_select_protocol.clicked.connect(lambda: self.request_protocol_list.emit())
         self.btn_toggle_theme = QPushButton("Toggle Theme")
         self.btn_toggle_theme.clicked.connect(self._toggle_theme)
         bottom = QHBoxLayout()
@@ -134,10 +133,19 @@ class ParamsPage(QWidget):
         bottom.addStretch(1)
         bottom.addWidget(self.btn_toggle_theme)
 
-        # ── assemble left/right content ───────────────────
+        # ── assemble left / center / right content ────────
         content = QHBoxLayout()
+
+        # LEFT: Intensity (top) + MT (below)
+        left_col = QVBoxLayout()
+        left_col.addWidget(self.intensity_gauge)
+        left_col.addWidget(self.mt_slider)
+        content.addLayout(left_col, stretch=0)
+
+        # CENTER: waveform schematic
         content.addWidget(self.pulse_widget, stretch=1)
 
+        # RIGHT: params list + controls
         param_col = QVBoxLayout()
         param_col.addWidget(self.list_widget, stretch=1)
         param_col.addLayout(nav_box)
@@ -151,7 +159,7 @@ class ParamsPage(QWidget):
         main_lay.addLayout(content, stretch=1)
         main_lay.addLayout(bottom)
 
-        # NOW that widgets exist, apply theme (stylesheet + palettes)
+        # Apply theme/palette now that widgets exist
         self._apply_theme_to_app(self.current_theme)
 
     # ---------------------------------------------------------
@@ -159,10 +167,11 @@ class ParamsPage(QWidget):
     # ---------------------------------------------------------
     def set_protocol(self, proto: TMSProtocol):
         """
-        Load a TMSProtocol and update:
+        Bind TMSProtocol to the UI:
           - header labels
-          - parameter list values/bounds
-          - waveform widget (pulse_widget)
+          - left column (gauge + MT slider)
+          - waveform widget
+          - parameter list values/bounds (excluding MT/Intensity)
         """
         self.current_protocol = proto
 
@@ -171,11 +180,14 @@ class ParamsPage(QWidget):
         desc = proto.description or "<none>"
         self.lbl_desc.setText(f"Description: {desc}")
 
-        # helper for formatting display ranges
+        # left column widgets pull values/ranges from protocol
+        self.intensity_gauge.setFromProtocol(proto)  # uses max_intensity_percent_of_mt
+        self.mt_slider.setFromProtocol(proto)
+
+        # update the parameter list widget rows (list no longer includes MT/Intensity)
         def fmt(x):
             return f"{x:.1f}" if isinstance(x, float) else str(x)
 
-        # update the parameter list widget rows
         for row in range(self.list_widget.count()):
             item = self.list_widget.item(row)
             meta = item.data(Qt.UserRole) or {}
@@ -183,34 +195,54 @@ class ParamsPage(QWidget):
             lo = meta.get("lo")
             hi = meta.get("hi")
             unit = meta.get("unit", "")
-
             row_widget = self.list_widget.itemWidget(item)
             if not key or not row_widget:
                 continue
 
-            # live value from protocol
             val = getattr(proto, key)
             row_widget.set_value(val)
-
-            # dynamic max for intensity % of MT
-            hi_act = proto.max_intensity_percent_of_mt if key == "intensity_percent_of_mt" else hi
-            suffix = f"{unit}   ( {fmt(lo)} – {fmt(hi_act)} )"
+            suffix = f"{unit}   ( {fmt(lo)} – {fmt(hi)} )" if (lo is not None and hi is not None) else unit
             row_widget.set_suffix(suffix)
 
         # update the waveform widget:
         self.pulse_widget.set_protocol(proto)
 
-        # refresh palette on the waveform in case theme changed earlier
-        self.pulse_widget.setPalette(self.theme_manager.generate_palette(self.current_theme))
+        # refresh palettes on themed children
+        pal = self.theme_manager.generate_palette(self.current_theme)
+        self.pulse_widget.setPalette(pal)
+        self.pulse_widget.train_view.setPalette(pal)
+        self.pulse_widget.rest_circle.setPalette(pal)
+
+        # also theme the new left-column widgets
+        self.intensity_gauge.setPalette(pal)
+        self.mt_slider.setPalette(pal)
+        # call their theme hooks (colors like TEXT_COLOR_SECONDARY, gradients, etc.)
+        try:
+            self.intensity_gauge.applyTheme(self.theme_manager, self.current_theme)
+            self.mt_slider.applyTheme(self.theme_manager, self.current_theme)
+        except Exception:
+            pass
 
     # ---------------------------------------------------------
     # internal helpers
     # ---------------------------------------------------------
+    def _on_mt_changed(self, v: int):
+        """When MT slider moves, write back to protocol and refresh dependent UI."""
+        if not self.current_protocol:
+            return
+        self.current_protocol.subject_mt_percent = float(v)
+        # If your protocol changes max_intensity_percent_of_mt based on MT, the gauge will refresh here:
+        self.set_protocol(self.current_protocol)
+
+    def _on_intensity_changed(self, v: int):
+        """When gauge value changes, write back to protocol and refresh UI."""
+        if not self.current_protocol:
+            return
+        self.current_protocol.intensity_percent_of_mt = float(v)
+        self.set_protocol(self.current_protocol)
+
     def _modify_value(self, delta: int):
-        """
-        User hit + or -. We nudge current selected param
-        and then re-run set_protocol() so both UI columns and waveform redraw.
-        """
+        """Nudge the currently selected *list* param (MT/Intensity excluded)."""
         if not self.current_protocol:
             return
         item = self.list_widget.currentItem()
@@ -227,10 +259,7 @@ class ParamsPage(QWidget):
         except (ValueError, TypeError):
             return
 
-        # write back into the dataclass (will auto-clamp via property setters)
         setattr(self.current_protocol, key, cur_val + delta)
-
-        # re-bind everything
         self.set_protocol(self.current_protocol)
 
     def _apply_theme_to_app(self, theme_name: str):
@@ -242,17 +271,27 @@ class ParamsPage(QWidget):
 
         pal = self.theme_manager.generate_palette(theme_name)
 
-        if hasattr(self, "pulse_widget") and self.pulse_widget is not None:
-            # apply to the composite widget
-            self.pulse_widget.setPalette(pal)
+        # apply palette to composite widgets
+        self.pulse_widget.setPalette(pal)
+        self.pulse_widget.train_view.setPalette(pal)
+        self.pulse_widget.rest_circle.setPalette(pal)
 
-            # and to its paint-children so they pick up QPalette.Highlight etc.
-            self.pulse_widget.train_view.setPalette(pal)
-            self.pulse_widget.rest_circle.setPalette(pal)
+        self.intensity_gauge.setPalette(pal)
+        self.mt_slider.setPalette(pal)
+
+        # propagate token-based colors (ACCENT_GRADIENT_START/END, TEXT_COLOR_SECONDARY, etc.)
+        try:
+            self.intensity_gauge.applyTheme(self.theme_manager, theme_name)
+            self.mt_slider.applyTheme(self.theme_manager, theme_name)
+        except Exception:
+            print("Cant apply theme to gauge and slider")
 
     def _toggle_theme(self):
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
         self._apply_theme_to_app(self.current_theme)
+        # re-bind to make sure any dynamic bounds are refreshed under the new theme
+        if self.current_protocol:
+            self.set_protocol(self.current_protocol)
 
 
 # ───────────────────────────────────────────────────────────────
@@ -334,7 +373,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.plist)
         self._show_params()
 
-        self.resize(400, 600)
+        self.resize(800, 600)
         self.setMinimumSize(320, 480)
 
         # load first protocol by default
@@ -373,6 +412,7 @@ if __name__ == "__main__":
     protocols_f = SRC          / "protocols.json"
 
     theme_mgr = ThemeManager(template_path=tpl, themes_dir=theme_dir)
+
 
     w = MainWindow(protocol_json=protocols_f,
                    theme_manager=theme_mgr,

@@ -3,7 +3,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from app.theme_manager import ThemeManager
 from hardware.uart_manager import UARTManager
-from hardware.gpio_controller import GPIOService
+from services.gpio_service import GPIOService, EncoderSpec  # <<< NEW import
 from services.uart_service import UARTService
 from services.command_manager import CommandManager
 from services.rx_manager import RxManager
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QLabel, QHBoxLayout
 )
 from ui.widgets.connection_indicator import ConnectionIndicator
+
 
 class MainWindow(QWidget):
     def __init__(self, uart_service, cmd_mgr, rx_mgr, gpio_svc):
@@ -57,8 +58,12 @@ class MainWindow(QWidget):
         # when command ready, send via UARTService
         self.cmd_mgr.packet_ready.connect(self.uart.send)
 
-        # button presses → build commands
+        # GPIO → build commands
         self.gpio.button_pressed.connect(self._on_button_press)
+
+        # OPTIONAL: log encoder steps (A=5, B=6)
+        if hasattr(self.gpio, "encoder_step"):
+            self.gpio.encoder_step.connect(self._on_encoder_step)
 
         # update indicator & blink on RX
         self.uart.connection_status_changed.connect(self.conn_indicator.set_connected)
@@ -70,6 +75,8 @@ class MainWindow(QWidget):
 
         # log errors
         self.uart.error.connect(self._on_error)
+        if hasattr(self.gpio, "error"):
+            self.gpio.error.connect(lambda msg: self.log.append(f"GPIO ERROR: {msg}"))
 
     def _on_button_press(self, pin: int):
         if pin == 17:
@@ -78,6 +85,11 @@ class MainWindow(QWidget):
         elif pin == 22:
             self.log.append("Stop button pressed")
             self.cmd_mgr.build_stop_tms()
+
+    def _on_encoder_step(self, enc_id: int, step: int):
+        # step: +1 (CW) / -1 (CCW)
+        direction = "CW" if step > 0 else "CCW"
+        self.log.append(f"Encoder {enc_id}: step {step} ({direction})")
 
     def _update_status(self, on: bool):
         txt = "TMS ON" if on else "TMS OFF"
@@ -99,21 +111,30 @@ if __name__ == "__main__":
     tpl = ROOT / "assets" / "styles" / "template.qss"
     cfg = ROOT / "config"
     theme_mgr = ThemeManager(template_path=tpl, themes_dir=cfg)
+    # if your ThemeManager needs applying, do it here (API depends on your implementation):
+    theme_mgr.apply(app, "dark")
 
     # low‐level
     uart_m = UARTManager()
     uart_s = UARTService(uart_m)
 
-    # GPIO
-    gpio_s = GPIOService(pins=[17,22], pull_up=True)
+    # GPIO (buttons on 17/22; encoder A=5, B=6)
+    gpio_s = GPIOService(
+        pins=[17, 22],
+        encoders=[EncoderSpec(a_pin=5, b_pin=6, id=1, invert=False, edge_rising_only=True, debounce_ms=1)],
+        pull_up=True,
+        button_bouncetime_ms=200,
+    )
+    gpio_s.start()  # <<< start the background GPIO thread
+    app.aboutToQuit.connect(gpio_s.stop)
 
     # command + parser
     cmd_m = CommandManager()
     rx_m  = RxManager(uart_s)
 
     # main UI
-    w = MainWindow(uart_s, cmd_m, rx_m, gpio_s, theme_mgr, initial_theme="dark")
-    w.resize(400,300)
+    w = MainWindow(uart_s, cmd_m, rx_m, gpio_s)
+    w.resize(400, 300)
     w.show()
 
     # auto‐connect UART

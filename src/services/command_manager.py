@@ -12,9 +12,9 @@ class CommandManager(QObject):
         cmd[1] = intensity & 0xFF
         cmd[2] = (duration_ms >> 8) & 0xFF
         cmd[3] = duration_ms & 0xFF
-        self.packet_ready.emit(bytes(cmd))
+        self.packet_ready.emit(bytes(cmd)) # Event with Args
 
     def build_stop_tms(self):
         cmd = bytearray(15)
         cmd[0] = 0x11
-        self.packet_ready.emit(bytes(cmd))
+        self.packet_ready.emit(bytes(cmd)) # Event with Args

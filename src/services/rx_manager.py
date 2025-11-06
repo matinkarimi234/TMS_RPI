@@ -11,5 +11,5 @@ class RxManager(QObject):
     def _on_packet(self, packet: bytes):
         status = (packet[0] == 0x01)
         intensity = (packet[1] << 8) | packet[2]
-        self.tms_status.emit(status)
-        self.intensity_reading.emit(intensity)
+        self.tms_status.emit(status) # Event with Args
+        self.intensity_reading.emit(intensity) # Event with Args
