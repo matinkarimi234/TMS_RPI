@@ -1,4 +1,3 @@
-# tools/uart_test_app.py
 from __future__ import annotations
 
 import sys
@@ -125,7 +124,7 @@ class UARTTestApp(QWidget):
 
         # buttons
         self.btn_open.clicked.connect(self._open_clicked)
-        self.btn_close.clicked.connect(self.uart_s.disconnect)
+        self.btn_close.clicked.connect(self.uart_s.close)
         self.btn_start.clicked.connect(partial(self.cmd_m.build_start_tms, self.intensity_spin.value(), 200))
         self.btn_stop.clicked.connect(self.cmd_m.build_stop_tms)
         self.btn_send_telemetry.clicked.connect(self._send_one_telemetry)
@@ -144,7 +143,7 @@ class UARTTestApp(QWidget):
             return
 
         try:
-            self.uart_s.disconnect()
+            self.uart_s.close()
         except Exception:
             pass
 
@@ -167,7 +166,7 @@ class UARTTestApp(QWidget):
             pass
         self.cmd_m.packet_ready.connect(self._send_with_checksum)
 
-        self.uart_s.connect()
+        self.uart_s.open()
 
     def _on_conn(self, ok: bool):
         self.lbl_conn.setText("Connected" if ok else "Disconnected")
@@ -228,7 +227,7 @@ class UARTTestApp(QWidget):
     def closeEvent(self, e):
         try:
             self.timer.stop()
-            self.uart_s.disconnect()
+            self.uart_s.close()
         except Exception:
             pass
         super().closeEvent(e)

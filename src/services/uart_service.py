@@ -8,14 +8,15 @@ class UARTService(QObject):
     def __init__(self, uart_manager):
         super().__init__()
         self.uart = uart_manager
-        self.uart.data_received.connect(self.telemetry_updated)
-        self.uart.error.connect(self.error)
-        self.uart.connection_status_changed.connect(self.connection_status_changed)
+        # re-emit correctly
+        self.uart.data_received.connect(self.telemetry_updated.emit)
+        self.uart.error.connect(self.error.emit)
+        self.uart.connection_status_changed.connect(self.connection_status_changed.emit)
 
-    def connect(self):
+    def open(self):
         self.uart.open()
 
-    def disconnect(self):
+    def close(self):
         self.uart.close()
 
     def send(self, packet: bytes):

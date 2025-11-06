@@ -17,10 +17,10 @@ class UARTManager(QObject):
         self._stop    = threading.Event()
         self._thread  = None
 
-        # NEW: how many bytes must be waiting before we attempt a read
+        # how many bytes must be waiting before we attempt a read
         self._rx_trigger_bytes = max(1, int(rx_trigger_bytes))
 
-        # fixed frame length (your protocol uses 16 bytes with last as checksum)
+        # fixed frame length (protocol uses 16 bytes with last as checksum)
         self._frame_len = 16
 
     # -------- live-tunable property ------------------------------------------
