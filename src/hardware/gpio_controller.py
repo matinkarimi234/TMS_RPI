@@ -36,7 +36,7 @@ class GPIOController:
                 pass
         self._pull_up[pin] = pull_up
         # bounce_time set later in add_event_detect (seconds)
-        self._btn[pin] = Button(pin, pull_up=pull_up, bounce_time=None)
+        self._btn[pin] = Button(pin, pull_up=pull_up)
 
     def add_event_detect(self, pin: int, callback: Callable[[int], None], *, bouncetime_ms: int = 200) -> None:
         """
