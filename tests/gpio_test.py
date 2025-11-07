@@ -1,7 +1,16 @@
 # tools/gpio_test_app.py
+from pathlib import Path
 from __future__ import annotations
 import sys
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QHBoxLayout
+
+# ─── allow imports from src/ ────────────────────────────────────
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+SRC = PROJECT_ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+
 from services.gpio_service import GPIOService, EncoderSpec
 
 # buttons on 17/22, encoder on A=5, B=6 (like your Tk code)

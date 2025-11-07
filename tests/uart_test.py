@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pathlib import Path
 
 import sys
 from functools import partial
@@ -7,6 +8,12 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QLabel, QSpinBox, QCheckBox, QLineEdit
 )
+
+# ─── allow imports from src/ ────────────────────────────────────
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+SRC = PROJECT_ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 from hardware.uart_manager import UARTManager
 from services.uart_service import UARTService
@@ -33,7 +40,7 @@ def make_telemetry(status_on: bool, intensity: int) -> bytes:
 
 
 class UARTTestApp(QWidget):
-    def __init__(self, port: str = "loop://", baud: int = 9600, timeout: float = 0.1):
+    def __init__(self, port: str = "/dev/ttyAMA0", baud: int = 9600, timeout: float = 0.1):
         super().__init__()
         self.setWindowTitle("UART Unit Test App")
 
@@ -234,7 +241,7 @@ class UARTTestApp(QWidget):
 
 
 if __name__ == "__main__":
-    port = "loop://"
+    port = "/dev/ttyAMA0"
     baud = 9600
     if len(sys.argv) >= 2:
         port = sys.argv[1]
