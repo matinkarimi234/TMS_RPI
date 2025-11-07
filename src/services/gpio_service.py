@@ -1,9 +1,12 @@
-# services/gpio_service.py
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence
+
 from PySide6.QtCore import QObject, Signal, Slot, QThread
+
 from hardware.gpio_controller import GPIOController
+
 
 @dataclass(frozen=True)
 class EncoderSpec:
@@ -12,8 +15,9 @@ class EncoderSpec:
     b_pin: int
     id: int = 0               # optional identifier if you have multiple encoders
     invert: bool = False      # flip direction if wiring is opposite
-    edge_rising_only: bool = True 
+    edge_rising_only: bool = True
     debounce_ms: int = 1      # very small debounce for encoders
+
 
 class GPIOSignals(QObject):
     button_pressed = Signal(int)           # pin
@@ -22,6 +26,7 @@ class GPIOSignals(QObject):
     error = Signal(str)
     ready = Signal()
     stopped = Signal()
+
 
 class _GPIOWorker(QObject):
     def __init__(
@@ -42,8 +47,7 @@ class _GPIOWorker(QObject):
         self.signals = GPIOSignals()
         self._started = False
 
-        # quick maps for callbacks
-        self._btn_set = set(self._buttons)
+        # Quick maps for callbacks
         self._enc_by_a: dict[int, EncoderSpec] = {e.a_pin: e for e in self._encoders}
 
     @Slot()
@@ -51,7 +55,7 @@ class _GPIOWorker(QObject):
         try:
             self._ctl.setmode_bcm()
 
-            # Setup buttons
+            # Buttons
             for pin in self._buttons:
                 self._ctl.setup_input(pin, pull_up=self._pull_up)
                 self._ctl.add_event_detect(
@@ -61,17 +65,15 @@ class _GPIOWorker(QObject):
                     bouncetime_ms=self._btn_bounce,
                 )
 
-            # Setup encoders
+            # Encoders (A/B inputs; trigger on A rising only unless configured otherwise)
             for enc in self._encoders:
-                # A and B as inputs
                 self._ctl.setup_input(enc.a_pin, pull_up=self._pull_up)
                 self._ctl.setup_input(enc.b_pin, pull_up=self._pull_up)
-                # Use A’s **rising** edge only (like your Tk code)
                 self._ctl.add_event_detect(
                     enc.a_pin,
                     callback=self._encoder_callback,
                     both=False,
-                    rising=True if enc.edge_rising_only else False,
+                    rising=bool(enc.edge_rising_only),
                     falling=False,
                     bouncetime_ms=max(0, enc.debounce_ms),
                 )
@@ -102,11 +104,13 @@ class _GPIOWorker(QObject):
         try:
             b_level = self._ctl.input(enc.b_pin)
         except Exception as exc:
-            self.signals.error.emit(f"Encoder read failed (A={a_channel}, B={enc.b_pin}): {exc}")
+            self.signals.error.emit(
+                f"Encoder read failed (A={a_channel}, B={enc.b_pin}): {exc}"
+            )
             return
 
         # With pull-ups, idle is HIGH. On A rising:
-        # - if B == LOW → one direction; if B == HIGH → the other.
+        # - if B == LOW → CW; if B == HIGH → CCW (convention; invert to flip)
         step = +1 if b_level == self._ctl.LOW else -1
         if enc.invert:
             step = -step
@@ -116,10 +120,8 @@ class _GPIOWorker(QObject):
     def stop(self) -> None:
         try:
             if self._started:
-                # remove events for buttons
                 for pin in self._buttons:
                     self._ctl.remove_event_detect(pin)
-                # remove events for encoders (A pins only)
                 for enc in self._encoders:
                     self._ctl.remove_event_detect(enc.a_pin)
                 self._ctl.cleanup()
@@ -128,6 +130,7 @@ class _GPIOWorker(QObject):
         finally:
             self._started = False
             self.signals.stopped.emit()
+
 
 class GPIOService(QObject):
     button_pressed = Signal(int)

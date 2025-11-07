@@ -1,8 +1,11 @@
-# tools/gpio_test_app.py
-from pathlib import Path
 from __future__ import annotations
+
+from pathlib import Path
 import sys
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QHBoxLayout
+
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QHBoxLayout
+)
 
 # ─── allow imports from src/ ────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
@@ -10,12 +13,12 @@ SRC = PROJECT_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-
 from services.gpio_service import GPIOService, EncoderSpec
 
-# buttons on 17/22, encoder on A=5, B=6 (like your Tk code)
+# Buttons on 17/22, encoder on A=5, B=6
 BUTTON_PINS = [17, 22]
 ENCODERS = [EncoderSpec(a_pin=5, b_pin=6, id=1, invert=False, edge_rising_only=True, debounce_ms=1)]
+
 
 class GPIODemo(QWidget):
     def __init__(self):
@@ -23,7 +26,8 @@ class GPIODemo(QWidget):
         self.setWindowTitle("GPIO + Encoder Tester")
 
         self.lbl_status = QLabel("Status: idle")
-        self.log = QTextEdit(readOnly=True)
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
         self.btn_start = QPushButton("Start service")
         self.btn_stop = QPushButton("Stop service")
 
@@ -65,6 +69,7 @@ class GPIODemo(QWidget):
     def _on_enc(self, enc_id: int, step: int) -> None:
         dir_txt = "CW" if step > 0 else "CCW"
         self._append(f"ENC#{enc_id}: step {step} ({dir_txt})")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
