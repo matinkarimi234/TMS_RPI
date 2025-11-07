@@ -69,7 +69,7 @@ class GPIOController:
                 pass
         self._pull_up[pin] = pull_up
         # Set bounce_time later per-callback
-        self._btn[pin] = Button(pin, pull_up=pull_up, bounce_time=None)
+        self._btn[pin] = Button(pin, pull_up=pull_up)
 
     def add_event_detect(
         self,
@@ -90,7 +90,7 @@ class GPIOController:
             self.setup_input(pin, pull_up=True)
 
         dev = self._btn[pin]
-        dev.bounce_time = self._ms_to_seconds(bouncetime_ms)
+        #dev.bounce_time = self._ms_to_seconds(bouncetime_ms)
 
         # Safe wrapper: gpiozero passes no channel; we inject pin.
         def _cb() -> None:
