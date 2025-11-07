@@ -48,7 +48,7 @@ class GPIOController:
 
         dev = self._btn[pin]
         # convert ms -> seconds (gpiozero expects seconds)
-        dev.bounce_time = (bouncetime_ms / 1000.0) if bouncetime_ms is not None else None
+        #dev.bounce_time = (bouncetime_ms / 1000.0) if bouncetime_ms is not None else None
 
         # clear any previous handlers
         dev.when_pressed = None
