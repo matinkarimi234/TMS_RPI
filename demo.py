@@ -25,7 +25,6 @@ from ui.widgets.pulse_bars_widget import PulseBarsWidget
 
 # NEW: add your widgets
 from ui.widgets.intensity_gauge import IntensityGauge
-from ui.widgets.mt_slider import MTSlider
 # ───────────────────────────────────────────────────────────────
 
 
@@ -53,11 +52,9 @@ class ParamsPage(QWidget):
 
         # ── Left column: Intensity gauge + MT slider ───────
         self.intensity_gauge = IntensityGauge(self)
-        self.mt_slider = MTSlider(self)
 
         # live updates back into the protocol
         self.intensity_gauge.valueChanged.connect(self._on_intensity_changed)
-        self.mt_slider.valueChanged.connect(self._on_mt_changed)
 
         # ── PulseBarsWidget (waveform schematic) ───────────
         self.pulse_widget = PulseBarsWidget(self)
@@ -139,7 +136,6 @@ class ParamsPage(QWidget):
         # LEFT: Intensity (top) + MT (below)
         left_col = QVBoxLayout()
         left_col.addWidget(self.intensity_gauge)
-        left_col.addWidget(self.mt_slider)
         content.addLayout(left_col, stretch=0)
 
         # CENTER: waveform schematic
@@ -182,7 +178,6 @@ class ParamsPage(QWidget):
 
         # left column widgets pull values/ranges from protocol
         self.intensity_gauge.setFromProtocol(proto)  # uses max_intensity_percent_of_mt
-        self.mt_slider.setFromProtocol(proto)
 
         # update the parameter list widget rows (list no longer includes MT/Intensity)
         def fmt(x):
@@ -215,24 +210,15 @@ class ParamsPage(QWidget):
 
         # also theme the new left-column widgets
         self.intensity_gauge.setPalette(pal)
-        self.mt_slider.setPalette(pal)
         # call their theme hooks (colors like TEXT_COLOR_SECONDARY, gradients, etc.)
         try:
             self.intensity_gauge.applyTheme(self.theme_manager, self.current_theme)
-            self.mt_slider.applyTheme(self.theme_manager, self.current_theme)
         except Exception:
             pass
 
     # ---------------------------------------------------------
     # internal helpers
     # ---------------------------------------------------------
-    def _on_mt_changed(self, v: int):
-        """When MT slider moves, write back to protocol and refresh dependent UI."""
-        if not self.current_protocol:
-            return
-        self.current_protocol.subject_mt_percent = float(v)
-        # If your protocol changes max_intensity_percent_of_mt based on MT, the gauge will refresh here:
-        self.set_protocol(self.current_protocol)
 
     def _on_intensity_changed(self, v: int):
         """When gauge value changes, write back to protocol and refresh UI."""
@@ -277,12 +263,10 @@ class ParamsPage(QWidget):
         self.pulse_widget.rest_circle.setPalette(pal)
 
         self.intensity_gauge.setPalette(pal)
-        self.mt_slider.setPalette(pal)
 
         # propagate token-based colors (ACCENT_GRADIENT_START/END, TEXT_COLOR_SECONDARY, etc.)
         try:
             self.intensity_gauge.applyTheme(self.theme_manager, theme_name)
-            self.mt_slider.applyTheme(self.theme_manager, theme_name)
         except Exception:
             print("Cant apply theme to gauge and slider")
 
