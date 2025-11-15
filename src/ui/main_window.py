@@ -9,16 +9,21 @@ from PySide6.QtWidgets import (
 
 
 # ─── allow imports from src/ ────────────────────────────────────
-PROJECT_ROOT = Path(__file__).parent.resolve()
-SRC = PROJECT_ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+# PROJECT_ROOT = Path(__file__).parent.resolve()
+# SRC = PROJECT_ROOT / "src"
+# if str(SRC) not in sys.path:
+#     sys.path.insert(0, str(SRC))
 
 
 from app.theme_manager import ThemeManager
 from core.protocol_manager_revised import ProtocolManager
 from ui.pages.Main_Page import ParamsPage
+# from services.gpio_service import GPIOService, EncoderSpec
 from ui.pages.Protocol_Page import ProtocolListPage
+from workers.mock_gpio_service import MockGPIOService
+
+# encoders = [EncoderSpec(a_pin=5, b_pin=6, id=1, invert=False, edge_rising_only=True, debounce_ms=1)]
+# gpio = GPIOService(pins=[17, 22], encoders=encoders, pull_up=True, button_bouncetime_ms=200)
 
 class MainWindow(QMainWindow):
     def __init__(self, protocol_json: Path, theme_manager: ThemeManager, initial_theme="dark"):
@@ -32,8 +37,9 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setCentralWidget(self.stack)
-
-        self.params = ParamsPage(theme_manager, initial_theme)
+        
+        gpio_mock = MockGPIOService()
+        self.params = ParamsPage(theme_manager, gpio_mock, initial_theme)
         self.params.request_protocol_list.connect(self._show_list)
 
         self.plist = ProtocolListPage(self.pm)
