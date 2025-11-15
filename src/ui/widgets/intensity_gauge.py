@@ -7,7 +7,7 @@ from PySide6.QtGui import QPainter, QPen, QFont, QConicalGradient, QColor, QBrus
 from PySide6.QtWidgets import QWidget
 
 try:
-    from core.protocol_manager import TMSProtocol  # type: ignore
+    from core._Archive.protocol_manager import TMSProtocol  # type: ignore
 except Exception:
     TMSProtocol = object  # type: ignore
 

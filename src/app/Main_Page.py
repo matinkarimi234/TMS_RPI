@@ -1,32 +1,22 @@
-# demo.py
-import sys
-from pathlib import Path
+
 from typing import Optional
-
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QStackedWidget, QWidget,
-    QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
-    QSizePolicy
-)
-from PySide6.QtGui import QFontDatabase, QFont
 from PySide6.QtCore import Signal, Qt
-
-# ─── allow imports from src/ ────────────────────────────────────
+from PySide6.QtWidgets import (
+    QApplication, QWidget,
+    QVBoxLayout, QHBoxLayout, QLabel, QPushButton)
+from pathlib import Path
+import sys
 PROJECT_ROOT = Path(__file__).parent.resolve()
 SRC = PROJECT_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-# ─── your existing modules under src/ ─────────────────────────
 from app.theme_manager import ThemeManager
-from core._Archive.protocol_manager import ProtocolManager, TMSProtocol
+from core._Archive.protocol_manager import TMSProtocol
 from ui.widgets.navigation_list_widget import NavigationListWidget
 from ui.widgets.pulse_bars_widget import PulseBarsWidget
 
-# NEW: add your widgets
 from ui.widgets.intensity_gauge import IntensityGauge
-# ───────────────────────────────────────────────────────────────
-
 
 class ParamsPage(QWidget):
     """
@@ -276,130 +266,3 @@ class ParamsPage(QWidget):
         # re-bind to make sure any dynamic bounds are refreshed under the new theme
         if self.current_protocol:
             self.set_protocol(self.current_protocol)
-
-
-# ───────────────────────────────────────────────────────────────
-class ProtocolListPage(QWidget):
-    accepted = Signal(str)
-    canceled = Signal()
-
-    def __init__(self, pm: ProtocolManager, parent=None):
-        super().__init__(parent)
-        self.pm = pm
-
-        self.list_widget = QListWidget()
-        self.list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.list_widget.addItems(self.pm.list_protocols())
-        self.list_widget.setCurrentRow(0)
-
-        btn_up = QPushButton("Up")
-        btn_down = QPushButton("Down")
-        btn_up.clicked.connect(self._up)
-        btn_down.clicked.connect(self._down)
-        nav = QHBoxLayout()
-        nav.addWidget(btn_up)
-        nav.addWidget(btn_down)
-
-        btn_ok = QPushButton("OK")
-        btn_cancel = QPushButton("Cancel")
-        btn_ok.clicked.connect(self._on_ok)
-        btn_cancel.clicked.connect(lambda: self.canceled.emit())
-        ctl = QHBoxLayout()
-        ctl.addWidget(btn_ok)
-        ctl.addWidget(btn_cancel)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(15, 10, 15, 10)
-        lay.setSpacing(5)
-        lay.addWidget(self.list_widget)
-        lay.addLayout(nav)
-        lay.addLayout(ctl)
-        lay.setStretch(0, 1)
-
-    def _up(self):
-        r = self.list_widget.currentRow()
-        if r > 0:
-            self.list_widget.setCurrentRow(r - 1)
-
-    def _down(self):
-        r = self.list_widget.currentRow()
-        if r < self.list_widget.count() - 1:
-            self.list_widget.setCurrentRow(r + 1)
-
-    def _on_ok(self):
-        item = self.list_widget.currentItem()
-        if item:
-            self.accepted.emit(item.text())
-
-
-# ───────────────────────────────────────────────────────────────
-class MainWindow(QMainWindow):
-    def __init__(self, protocol_json: Path, theme_manager: ThemeManager, initial_theme="dark"):
-        super().__init__()
-        self.setWindowTitle("TMS Control Interface")
-        self.resize(320, 480)
-
-        self.pm = ProtocolManager()
-        self.pm.load_from_json(protocol_json)
-
-        self.stack = QStackedWidget()
-        self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setCentralWidget(self.stack)
-
-        self.params = ParamsPage(theme_manager, initial_theme)
-        self.params.request_protocol_list.connect(self._show_list)
-
-        self.plist = ProtocolListPage(self.pm)
-        self.plist.accepted.connect(self._choose)
-        self.plist.canceled.connect(self._show_params)
-
-        self.stack.addWidget(self.params)
-        self.stack.addWidget(self.plist)
-        self._show_params()
-
-        self.resize(800, 600)
-        self.setMinimumSize(320, 480)
-
-        # load first protocol by default
-        names = self.pm.list_protocols()
-        if names:
-            self._load(names[0])
-
-    def _show_params(self):
-        self.stack.setCurrentWidget(self.params)
-
-    def _show_list(self):
-        self.stack.setCurrentWidget(self.plist)
-
-    def _choose(self, name: str):
-        self._load(name)
-        self._show_params()
-
-    def _load(self, name: str):
-        proto = self.pm.get_protocol(name)
-        if proto:
-            self.params.set_protocol(proto)
-
-
-# ───────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-
-    # load your custom font
-    font_id = QFontDatabase.addApplicationFont("assets/fonts/Tw-Cen-MT-Condensed.ttf")
-    families = QFontDatabase.applicationFontFamilies(font_id)
-    if families:
-        app.setFont(QFont(families[0]))
-
-    tpl         = PROJECT_ROOT / "assets" / "styles" / "template.qss"
-    theme_dir   = SRC          / "config"
-    protocols_f = SRC          / "protocols.json"
-
-    theme_mgr = ThemeManager(template_path=tpl, themes_dir=theme_dir)
-
-
-    w = MainWindow(protocol_json=protocols_f,
-                   theme_manager=theme_mgr,
-                   initial_theme="dark")
-    w.show()
-    sys.exit(app.exec())

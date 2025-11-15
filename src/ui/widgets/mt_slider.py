@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QWidget, QLabel, QSlider, QHBoxLayout, QVBoxLayout
 from PySide6.QtGui import QPalette, QColor
 
 try:
-    from core.protocol_manager import TMSProtocol  # type: ignore
+    from core._Archive.protocol_manager import TMSProtocol  # type: ignore
 except Exception:
     TMSProtocol = object  # type: ignore
 

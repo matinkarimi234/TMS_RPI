@@ -23,6 +23,17 @@ class TMSProtocol:
     ramp_fraction: float                  = 1.0   # 0.7 … 1.0
     ramp_steps: int                       = 1     # 1 … 10
 
+    mode: str                              = "rTMS"      # "rTMS" or "cTBS"
+
+    # Waveform is also meta: biphasic vs biphasic burst
+    waveform: str                          = "biphasic"  # "biphasic" or "biphasic burst"
+
+    # Burst definition:
+    # if burst_pulses == 1 -> standard rTMS (no burst structure)
+    burst_pulses: int                      = 1           # pulses within a burst
+    intra_burst_frequency_hz: float        = 50.0        # Hz of pulses inside a burst
+    burst_interval_s: float                = 0.2         # onset-to-onset interval between bursts (~5 Hz)
+
     # ——— 3) Device bounds — annotate as ClassVar so dataclass skips them ———
     MIN_MT_PERCENT: ClassVar[float]                      = 1.0
     MAX_MT_PERCENT: ClassVar[float]                      = 100.0
@@ -51,6 +62,15 @@ class TMSProtocol:
     MIN_RAMP_STEPS: ClassVar[int]                        = 1
     MAX_RAMP_STEPS: ClassVar[int]                        = 10
 
+    MIN_BURST_PULSES: ClassVar[int]               = 1
+    MAX_BURST_PULSES: ClassVar[int]               = 5
+
+    MIN_INTRA_BURST_FREQUENCY_HZ: ClassVar[float] = 1.0
+    MAX_INTRA_BURST_FREQUENCY_HZ: ClassVar[float] = 200.0
+
+    MIN_BURST_INTERVAL_S: ClassVar[float]         = 0.0
+    MAX_BURST_INTERVAL_S: ClassVar[float]         = 10.0
+
     # ——— 4) Private backing fields ———
     _subject_mt_percent: float          = field(init=False, repr=False)
     _intensity_percent_of_mt: float     = field(init=False, repr=False)
@@ -63,6 +83,11 @@ class TMSProtocol:
     _description: Optional[str]         = field(init=False, repr=False)
     _ramp_fraction: float               = field(init=False, repr=False)
     _ramp_steps: int                    = field(init=False, repr=False)
+    _mode: str                          = field(init=False, repr=False)
+    _waveform: str                      = field(init=False, repr=False)
+    _burst_pulses: int                  = field(init=False, repr=False)
+    _intra_burst_frequency_hz: float    = field(init=False, repr=False)
+    _burst_interval_s: float            = field(init=False, repr=False)
 
     def __post_init__(self):
         # funnel constructor args through setters
@@ -207,9 +232,38 @@ class TMSProtocol:
         return self.pulses_per_train * self.train_count
 
     def total_duration_s(self) -> float:
-        stim = self.pulses_per_train / self.frequency_hz
-        rest = self.inter_train_interval_s * (self.train_count - 1)
-        return stim * self.train_count + rest
+        """
+        Total duration in seconds.
+
+        - For plain rTMS (burst_pulses == 1) this is:
+            pulses_per_train / frequency_hz  per train
+        - For burst modes (e.g. cTBS) we use:
+            pulses are grouped into bursts of 'burst_pulses',
+            repeated every 'burst_interval_s' seconds, with internal
+            spacing 1 / intra_burst_frequency_hz.
+        """
+        if self.burst_pulses <= 1:
+            # classic rTMS: evenly spaced pulses
+            stim_per_train = self.pulses_per_train / self.frequency_hz
+        else:
+            # burst mode: total pulses per train is fixed
+            bursts_per_train = max(self.pulses_per_train // self.burst_pulses, 1)
+
+            # duration of a single burst (from first to last pulse)
+            burst_duration = 0.0
+            if self.intra_burst_frequency_hz > 0.0 and self.burst_pulses > 1:
+                burst_duration = (self.burst_pulses - 1) / self.intra_burst_frequency_hz
+
+            if bursts_per_train == 1:
+                stim_per_train = burst_duration
+            else:
+                # start of first burst at t=0, last pulse of final burst at:
+                # (bursts_per_train - 1) * burst_interval_s + burst_duration
+                stim_per_train = (bursts_per_train - 1) * self.burst_interval_s + burst_duration
+
+        total_stim = stim_per_train * self.train_count
+        total_rest = self.inter_train_interval_s * max(self.train_count - 1, 0)
+        return total_stim + total_rest
 
     # ——— NEW: ramp properties & helper ———
     @property
@@ -224,6 +278,64 @@ class TMSProtocol:
     @property
     def ramp_steps(self) -> int:
         return self._ramp_steps
+    
+    # ——— mode / waveform ———
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @mode.setter
+    def mode(self, val: str):
+        allowed = ("rTMS", "cTBS")
+        self._mode = val if val in allowed else "rTMS"
+
+    @property
+    def waveform(self) -> str:
+        return self._waveform
+
+    @waveform.setter
+    def waveform(self, val: str):
+        # small normalisation for spelling variants
+        if val == "biphasic_burst":
+            val = "biphasic burst"
+        allowed = ("biphasic", "biphasic burst")
+        self._waveform = val if val in allowed else "biphasic"
+
+    # ——— burst parameters ———
+    @property
+    def burst_pulses(self) -> int:
+        return self._burst_pulses
+
+    @burst_pulses.setter
+    def burst_pulses(self, val: int):
+        v = int(self._clamp(val, self.MIN_BURST_PULSES, self.MAX_BURST_PULSES))
+        self._burst_pulses = v
+
+    @property
+    def intra_burst_frequency_hz(self) -> float:
+        return self._intra_burst_frequency_hz
+
+    @intra_burst_frequency_hz.setter
+    def intra_burst_frequency_hz(self, val: float):
+        v = self._clamp(
+            val,
+            self.MIN_INTRA_BURST_FREQUENCY_HZ,
+            self.MAX_INTRA_BURST_FREQUENCY_HZ
+        )
+        self._intra_burst_frequency_hz = v
+
+    @property
+    def burst_interval_s(self) -> float:
+        return self._burst_interval_s
+
+    @burst_interval_s.setter
+    def burst_interval_s(self, val: float):
+        v = self._clamp(
+            val,
+            self.MIN_BURST_INTERVAL_S,
+            self.MAX_BURST_INTERVAL_S
+        )
+        self._burst_interval_s = v
 
     @ramp_steps.setter
     def ramp_steps(self, val: int):
