@@ -199,6 +199,27 @@ class TMSProtocol:
     def burst_pulses_count(self) -> int:
         """Free user choice among allowed integers."""
         return self._burst_pulses_count
+    
+    @property
+    def total_duration_s(self) -> float:
+        """
+        Estimated total protocol duration (in seconds).
+        Includes all trains and inter-train intervals.
+
+        Formula:
+            duration = (pulses_per_train / frequency_hz) * train_count
+                     + inter_train_interval_s * (train_count - 1)
+        """
+        if self._frequency_hz <= 0.0:
+            return 0.0
+
+        train_duration = self.pulses_per_train / self._frequency_hz
+        total = (train_duration * self.train_count)
+
+        if self.train_count > 1:
+            total += self.inter_train_interval_s * (self.train_count - 1)
+
+        return total
 
     @burst_pulses_count.setter
     def burst_pulses_count(self, value: int):

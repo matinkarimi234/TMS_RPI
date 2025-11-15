@@ -464,7 +464,7 @@ class PulseBarsWidget(QWidget):
         )
 
         # full session duration (stim+rests)
-        self._total_duration_s = proto.total_duration_s()
+        self._total_duration_s = proto.total_duration_s
 
         # reset UI state
         self.stop()

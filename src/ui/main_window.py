@@ -16,8 +16,9 @@ if str(SRC) not in sys.path:
 
 
 from app.theme_manager import ThemeManager
-from core._Archive.protocol_manager import ProtocolManager
-from app.Main_Page import ParamsPage
+from core.protocol_manager_revised import ProtocolManager
+from ui.pages.Main_Page import ParamsPage
+from ui.pages.Protocol_Page import ProtocolListPage
 
 class MainWindow(QMainWindow):
     def __init__(self, protocol_json: Path, theme_manager: ThemeManager, initial_theme="dark"):
@@ -65,3 +66,6 @@ class MainWindow(QMainWindow):
         proto = self.pm.get_protocol(name)
         if proto:
             self.params.set_protocol(proto)
+
+
+__all__ = ["MainWindow"]
