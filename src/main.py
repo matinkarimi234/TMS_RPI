@@ -22,6 +22,7 @@ def main():
 
     theme_mgr = ThemeManager(template_path=theme_tpl, themes_dir=theme_dir)
     win = MainWindow(protocol_json=protocol_js, theme_manager=theme_mgr)
+    win.set_coil_temp(20.1)
     win.show()
     sys.exit(app.exec())
 

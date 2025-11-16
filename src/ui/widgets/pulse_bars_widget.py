@@ -90,35 +90,52 @@ class PulseTrainView(QWidget):
     """
     Draw ONLY the current train (burst), not the whole session.
 
-    Burst always spans the widget width (minus margins).
-    Pulses are laid across that width, and a vertical playhead sweeps
-    left→right based on burst_progress.
+    Uses two different counts:
+      - _pulses_per_train        -> total pulses per train (train length)
+      - _burst_pulses_count      -> pulses inside each burst (1..5 from protocol)
+
+    Behaviour:
+
+    pulses_per_burst == 1  (pulse-to-pulse mode)
+      - show 2 pulses at the beginning and 2 at the end
+      - label interval as 1000/frequency_hz (ms)  [pulse-to-pulse]
+
+    pulses_per_burst = 2..5  (burst mode)
+      - show N pulses at the beginning and N at the end (N = 2..5)
+      - label interval as protocol IPI (inter_pulse_interval_ms)
 
     Visual elements:
       - amplitude label on the far left (e.g. "120")
       - dashed baseline under pulses
       - pulses rendered as biphasic pairs
-      - TOP bracket over pulses with burst duration in ms
-      - BOTTOM bracket with the inter-train interval (rest) in seconds
-      - duration text of the burst under the pulses
+      - TOP bracket over full burst with visual duration in ms
+      - interval brackets between:
+            * first & second pulses of left group
+            * last-1 & last pulses of right group
+      - center label: "........xN........" where N = pulses_per_train
       - playhead line in accent color
-
-    Dynamic stroke width:
-      low freq → thicker pulses & bigger biphasic gap
-      high freq → thinner pulses & tighter gap
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
+        # train-level
         self._pulses_per_train = 1
         self._freq_hz = 1.0
         self._amplitude_label = "120"
-        self._iti_s = 0.0  # <-- NEW: we store ITI so we can draw bottom bracket/label
 
-        self._burst_duration_s = 1.0      # pulses_per_train / freq_hz
-        self._burst_progress = 0.0        # 0..1 inside THIS burst
+        # burst-level
+        self._burst_pulses_count = 1          # 1..5 from TMSProtocol.burst_pulses_count
+        self._ipi_ms = 0.0                    # IPI from protocol
+
+        # visual timing
+        self._burst_duration_s = 1.0          # pulses_per_train / freq_hz
+        self._burst_progress = 0.0            # 0..1 inside THIS burst
+
+        # train index (not drawn now, kept for future use)
+        self._train_idx = 0
+        self._train_count = 1
 
     def sizeHint(self) -> QSize:
         return QSize(400, 160)
@@ -129,17 +146,19 @@ class PulseTrainView(QWidget):
         freq_hz: float,
         amplitude_label: str,
         burst_progress: float,
-        iti_s: float
+        ipi_ms: float,
+        burst_pulses_count: int,
     ):
         """
-        We call this every frame while in 'burst' phase (and also at setup / done).
-        We now receive iti_s so we can draw the bottom bracket.
+        Called each frame during 'burst' phase (and at setup/done).
         """
         self._pulses_per_train = max(1, pulses_per_train)
         self._freq_hz = max(0.0001, freq_hz)
         self._amplitude_label = amplitude_label
-        self._iti_s = max(0.0, iti_s)
+        self._ipi_ms = max(0.0, ipi_ms)
+        self._burst_pulses_count = max(1, burst_pulses_count)
 
+        # visual burst duration (train-level)
         self._burst_duration_s = self._pulses_per_train / self._freq_hz
 
         # clamp burst_progress
@@ -151,24 +170,30 @@ class PulseTrainView(QWidget):
 
         self.update()
 
+    def set_train_position(self, idx: int, count: int):
+        """Update which train we are showing (kept for future use)."""
+        if count < 1:
+            count = 1
+        if idx < 0:
+            idx = 0
+        if idx >= count:
+            idx = count - 1
+        self._train_idx = idx
+        self._train_count = count
+        self.update()
+
     def _compute_pulse_stroke_params(self):
         """
         Decide how "thick" each pulse is based on frequency.
-
-        base = 4.0 / freq
-        stroke_w = clamp(base, 1.0, 4.0)
-        pair_gap_px = stroke_w + 1.0
-
-        - ~1 Hz  => ~4px wide strokes, chunky
-        - ~20 Hz => ~1px wide strokes, tight
+        Made a bit chunkier to be more visible.
         """
-        base = 4.0 / self._freq_hz
+        base = 8.0 / self._freq_hz  # bigger base
         stroke_w = base
-        if stroke_w < 1.0:
-            stroke_w = 1.0
-        if stroke_w > 4.0:
-            stroke_w = 4.0
-        pair_gap_px = stroke_w + 1.0
+        if stroke_w < 2.0:
+            stroke_w = 2.0
+        if stroke_w > 8.0:
+            stroke_w = 8.0
+        pair_gap_px = stroke_w * 0.75
         return stroke_w, pair_gap_px
 
     def _draw_pulse_pair(
@@ -189,7 +214,7 @@ class PulseTrainView(QWidget):
         painter.drawLine(int(x + pair_gap_px), int(y_top),
                          int(x + pair_gap_px), int(y_bottom))
 
-    def _draw_bracket_with_label(
+    def _draw_bracket_with_label_above(
         self,
         painter: QPainter,
         x0: float,
@@ -198,6 +223,7 @@ class PulseTrainView(QWidget):
         y_label: float,
         text: str
     ):
+        """Bracket from x0..x1 at y_top, text ABOVE the bracket."""
         pen = QPen(self.palette().color(self.foregroundRole()))
         painter.setPen(pen)
 
@@ -209,6 +235,28 @@ class PulseTrainView(QWidget):
         tx = (x0 + x1) / 2 - tw / 2
         ty = y_label - 2
         painter.drawText(int(tx), int(ty), text)
+
+    def _draw_bracket_with_label_below(
+        self,
+        painter: QPainter,
+        x0: float,
+        x1: float,
+        y_top: float,
+        y_label: float,
+        text: str
+    ):
+        """Bracket from x0..x1 at y_top, text BELOW the bracket."""
+        pen = QPen(self.palette().color(self.foregroundRole()))
+        painter.setPen(pen)
+
+        painter.drawLine(int(x0), int(y_top), int(x0), int(y_label))
+        painter.drawLine(int(x1), int(y_top), int(x1), int(y_label))
+        painter.drawLine(int(x0), int(y_top), int(x1), int(y_top))
+
+        tw = painter.fontMetrics().horizontalAdvance(text)
+        tx = (x0 + x1) / 2 - tw / 2
+        ty = int(y_label)
+        painter.drawText(int(tx), ty, text)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -246,27 +294,57 @@ class PulseTrainView(QWidget):
             self._amplitude_label
         )
 
-        # burst timing
+        # visual burst duration (for top bracket & playhead)
         burst_total_ms = self._burst_duration_s * 1000.0
-        isi_ms = (1.0 / self._freq_hz) * 1000.0
 
-        # map local burst time (0..burst_total_ms) -> x across full usable width
-        def t_to_x(local_ms: float) -> float:
-            if burst_total_ms <= 0.0:
-                frac = 0.0
-            else:
-                frac = local_ms / burst_total_ms
-            return usable_left + frac * usable_w
-
-        # dynamic pulse width/spacing based on freq
+        # stroke size
         stroke_w, pair_gap_px = self._compute_pulse_stroke_params()
 
-        # draw pulses across full width
-        for n in range(self._pulses_per_train):
-            t_ms = n * isi_ms
-            if t_ms > burst_total_ms:
-                break
-            x = t_to_x(t_ms)
+        # ---- decide how many pulses per group & what interval to display ----
+        if self._burst_pulses_count == 1:
+            # pulse-to-pulse mode: 2 at begin, 2 at end
+            group_count = 2
+            ipi_display_ms = 1000.0 / self._freq_hz
+        else:
+            # burst mode: N at begin, N at end (2..5)
+            group_count = min(self._burst_pulses_count, 5)
+            if self._ipi_ms > 0.0:
+                ipi_display_ms = self._ipi_ms
+            else:
+                ipi_display_ms = 1000.0 / self._freq_hz
+
+        # ---- compute group regions ----
+        left_group_left = usable_left + 0.05 * usable_w
+        left_group_right = usable_left + 0.35 * usable_w
+        left_span = max(left_group_right - left_group_left, 1.0)
+
+        right_group_right = usable_right - 0.05 * usable_w
+        right_group_left = usable_left + 0.65 * usable_w
+        right_span = max(right_group_right - right_group_left, 1.0)
+
+        begin_x_positions = []
+        end_x_positions = []
+
+        if group_count == 1:
+            # just in case; not expected with our logic
+            x_left = left_group_left + left_span * 0.5
+            x_right = right_group_left + right_span * 0.5
+            begin_x_positions = [x_left]
+            end_x_positions = [x_right]
+        else:
+            # Distribute pulses evenly in each group
+            step_left = left_span / (group_count - 1)
+            step_right = right_span / (group_count - 1)
+
+            begin_x_positions = [
+                left_group_left + i * step_left for i in range(group_count)
+            ]
+            end_x_positions = [
+                right_group_left + i * step_right for i in range(group_count)
+            ]
+
+        # ---- draw pulses ----
+        for x in begin_x_positions + end_x_positions:
             self._draw_pulse_pair(
                 painter,
                 x,
@@ -276,16 +354,16 @@ class PulseTrainView(QWidget):
                 pair_gap_px
             )
 
-        # TOP bracket -> burst duration ms
+        # ---- TOP bracket -> burst visual duration in ms ----
         painter.setPen(QPen(self.palette().color(self.foregroundRole())))
         font_ann = QFont(painter.font())
         font_ann.setPointSizeF(font_ann.pointSizeF() * 0.9)
         painter.setFont(font_ann)
 
-        burst_label_ms = f"{burst_total_ms:.1f}"
+        burst_label_ms = f"{burst_total_ms:.1f} ms"
         bracket_top_y = pulse_top_y - 15
         bracket_text_y = bracket_top_y - 3
-        self._draw_bracket_with_label(
+        self._draw_bracket_with_label_above(
             painter,
             usable_left,
             usable_right,
@@ -294,38 +372,52 @@ class PulseTrainView(QWidget):
             burst_label_ms
         )
 
-        # BOTTOM bracket -> ITI seconds (rest duration),
-        #   This mimics the "60" under the pulses in the TMS UI screenshot.
-        #   We only draw it if iti_s > 0 (if no rest, it's not meaningful).
-        if self._iti_s > 0.0:
-            gap_label = f"{int(self._iti_s)}"
-            # we draw it BELOW the baseline in a mirrored bracket
-            gap_top_y = baseline_y + 15      # top line of bracket
-            gap_text_y = gap_top_y + 15      # where label will sit just under the bracket
-            self._draw_bracket_with_label(
+        # ---- INTERVAL BRACKETS ----
+        painter.setFont(font_ann)
+        if group_count >= 2:
+            ipi_text = f"{ipi_display_ms:.1f} ms"
+            # push further down so it doesn't collide with center label
+            ipi_top_y = baseline_y + 18
+            ipi_label_y = ipi_top_y + 18
+
+            # First interval (left group, first two pulses)
+            x0 = begin_x_positions[0]
+            x1 = begin_x_positions[1]
+            self._draw_bracket_with_label_below(
                 painter,
-                usable_left,
-                usable_right,
-                gap_top_y,
-                gap_text_y,
-                gap_label
+                x0,
+                x1,
+                ipi_top_y,
+                ipi_label_y,
+                ipi_text
             )
 
-        # duration label below burst ("1.2s" or "0:05")
-        if self._burst_duration_s < 60.0:
-            dur_label = f"{self._burst_duration_s:.1f}s"
-        else:
-            total_s_int = int(self._burst_duration_s)
-            mm = total_s_int // 60
-            ss = total_s_int % 60
-            dur_label = f"{mm}:{ss:02d}"
+            # Last interval (right group, last two pulses)
+            x0_last = end_x_positions[-2]
+            x1_last = end_x_positions[-1]
+            self._draw_bracket_with_label_below(
+                painter,
+                x0_last,
+                x1_last,
+                ipi_top_y,
+                ipi_label_y,
+                ipi_text
+            )
 
-        dur_tw = painter.fontMetrics().horizontalAdvance(dur_label)
-        dur_tx = usable_left + (usable_w - dur_tw) / 2
-        dur_ty = H - 5
-        painter.drawText(int(dur_tx), int(dur_ty), dur_label)
+        # ---- CENTER LABEL: "........xN........" (N = pulses_per_train) ----
+        label_font = QFont(painter.font())
+        label_font.setPointSizeF(label_font.pointSizeF() * 0.9)
+        painter.setFont(label_font)
 
-        # playhead: vertical accent bar sweeping left→right
+        pulses_text = f"x{self._pulses_per_train}"
+        center_label_text = f"........{pulses_text}........"
+
+        cl_tw = painter.fontMetrics().horizontalAdvance(center_label_text)
+        cl_tx = usable_left + (usable_w - cl_tw) / 2
+        cl_ty = int((pulse_top_y + baseline_y) / 2)
+        painter.drawText(int(cl_tx), cl_ty, center_label_text)
+
+        # ---- playhead: vertical accent bar across whole burst ----
         play_x = usable_left + (self._burst_progress * usable_w)
         hi_color = self.palette().color(QPalette.Highlight)
         play_pen = QPen(hi_color, 2)
@@ -343,31 +435,26 @@ class PulseTrainView(QWidget):
 
 class SessionStatusBar(QWidget):
     """
-    Bottom row: elapsed | remaining | Start/Stop button
+    Bottom row: Start/Stop button only (elapsed/remaining removed).
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-
-        self.lbl_elapsed = QLabel("00:00")
-        self.lbl_remaining = QLabel("00:00")
 
         self.btn_start = QPushButton("Start")
         self.btn_start.setObjectName("StartStopButton")
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-
-        lay.addWidget(self.lbl_elapsed)
-        lay.addStretch(1)
-        lay.addWidget(self.lbl_remaining)
         lay.addStretch(1)
         lay.addWidget(self.btn_start)
+        lay.addStretch(1)
 
+    # kept for compatibility; they do nothing now
     def set_elapsed_text(self, txt: str):
-        self.lbl_elapsed.setText(txt)
+        pass
 
     def set_remaining_text(self, txt: str):
-        self.lbl_remaining.setText(txt)
+        pass
 
     def set_button_running(self, running: bool):
         self.btn_start.setText("Stop" if running else "Start")
@@ -382,17 +469,13 @@ class PulseBarsWidget(QWidget):
     Orchestrates the live stimulation cycle.
 
     ACTIVE TRAIN:
-        - show PulseTrainView with pulses, top+bottom brackets
+        - show PulseTrainView with pulses, top bracket,
+          interval brackets and center label
         - hide CountdownCircle
 
     REST:
         - hide PulseTrainView
         - show CountdownCircle with shrinking arc & seconds until next train
-
-    We:
-      - keep total elapsed / remaining in a footer
-      - animate playhead in burst view
-      - show rest spinner between bursts
     """
 
     def __init__(self, parent=None):
@@ -414,6 +497,8 @@ class PulseBarsWidget(QWidget):
         self._burst_duration_s = 1.0
         self._total_duration_s = 1.0
         self._amp_label = "120"
+        self._ipi_ms = 0.0
+        self._burst_pulses_count = 1    # NEW: 1..5 from protocol
 
         # layout
         header_box = QHBoxLayout()
@@ -450,15 +535,19 @@ class PulseBarsWidget(QWidget):
             frequency_hz
             inter_train_interval_s
             intensity_percent_of_mt
-            total_duration_s()
+            inter_pulse_interval_ms
+            burst_pulses_count
+            total_duration_s (property)
         """
         self._train_count = proto.train_count
         self._pulses_per_train = proto.pulses_per_train
         self._freq_hz = proto.frequency_hz
         self._iti_s = proto.inter_train_interval_s
         self._amp_label = f"{int(round(proto.intensity_percent_of_mt))}"
+        self._ipi_ms = proto.inter_pulse_interval_ms
+        self._burst_pulses_count = proto.burst_pulses_count
 
-        # burst duration is pulses/freq
+        # visual burst duration used for timing/playhead (train-level)
         self._burst_duration_s = (
             self._pulses_per_train / self._freq_hz if self._freq_hz else 0.0
         )
@@ -468,8 +557,9 @@ class PulseBarsWidget(QWidget):
 
         # reset UI state
         self.stop()
-        self.status_bar.set_elapsed_text("00:00")
-        self.status_bar.set_remaining_text(self._fmt_time(self._total_duration_s))
+
+        # set initial train index (even if not drawn)
+        self.train_view.set_train_position(0, self._train_count)
 
         # show fresh burst (0% progress)
         self.train_view.set_burst_state(
@@ -477,7 +567,8 @@ class PulseBarsWidget(QWidget):
             freq_hz=self._freq_hz,
             amplitude_label=self._amp_label,
             burst_progress=0.0,
-            iti_s=self._iti_s
+            ipi_ms=self._ipi_ms,
+            burst_pulses_count=self._burst_pulses_count,
         )
 
         # init spinner with rest duration
@@ -487,14 +578,6 @@ class PulseBarsWidget(QWidget):
         )
 
         self._show_train_mode()
-
-        # palette note:
-        # after theme update in ParamsPage:
-        #   pal = theme_manager.generate_palette(theme_name)
-        #   pulse_widget.setPalette(pal)
-        #   pulse_widget.train_view.setPalette(pal)
-        #   pulse_widget.rest_circle.setPalette(pal)
-        # so Highlight == ACCENT_COLOR, not default purple.
 
     # ---------- session control ----------
 
@@ -535,7 +618,6 @@ class PulseBarsWidget(QWidget):
         burst_dur = self._burst_duration_s
         rest_dur = self._iti_s
 
-        # session duration = trains * burst_dur + (trains-1) * rest_dur
         session_dur = self._total_duration_s
 
         if elapsed_s >= session_dur:
@@ -608,33 +690,32 @@ class PulseBarsWidget(QWidget):
             elapsed = self._total_duration_s
             self.stop()
 
-        remaining = max(self._total_duration_s - elapsed, 0.0)
-
-        # footer labels
-        self.status_bar.set_elapsed_text(self._fmt_time(elapsed))
-        self.status_bar.set_remaining_text(self._fmt_time(remaining))
-
         # where are we in the protocol
         st = self._get_cycle_state(elapsed)
         phase = st["phase"]
+        train_idx = st["train_idx"]
+
+        # keep train index in sync (for future use)
+        self.train_view.set_train_position(train_idx, self._train_count)
 
         if phase == "burst":
-            # show pulses + both brackets
+            # show pulses + brackets + center label
             self._show_train_mode()
             self.train_view.set_burst_state(
                 pulses_per_train=self._pulses_per_train,
                 freq_hz=self._freq_hz,
                 amplitude_label=self._amp_label,
                 burst_progress=st["phase_progress"],
-                iti_s=self._iti_s
+                ipi_ms=self._ipi_ms,
+                burst_pulses_count=self._burst_pulses_count,
             )
 
         elif phase == "rest":
             # hide pulses, show countdown ring
             self._show_rest_mode()
             self.rest_circle.set_fraction_and_label(
-                frac=st["phase_progress"],            # how much rest elapsed
-                seconds_left=st["phase_remaining_s"]  # seconds left in this rest
+                frac=st["phase_progress"],
+                seconds_left=st["phase_remaining_s"]
             )
 
         else:
@@ -645,7 +726,8 @@ class PulseBarsWidget(QWidget):
                 freq_hz=self._freq_hz,
                 amplitude_label=self._amp_label,
                 burst_progress=1.0,
-                iti_s=self._iti_s
+                ipi_ms=self._ipi_ms,
+                burst_pulses_count=self._burst_pulses_count,
             )
 
     # ---------- util ----------

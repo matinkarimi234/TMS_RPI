@@ -50,8 +50,8 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.plist)
         self._show_params()
 
-        self.resize(800, 600)
-        self.setMinimumSize(320, 480)
+        self.resize(800, 480)
+        self.setMinimumSize(800, 480)
 
         # load first protocol by default
         names = self.pm.list_protocols()
@@ -72,6 +72,9 @@ class MainWindow(QMainWindow):
         proto = self.pm.get_protocol(name)
         if proto:
             self.params.set_protocol(proto)
+
+    def set_coil_temp(self, temp: float):
+        self.params.set_coil_temperature(temp)
 
 
 __all__ = ["MainWindow"]

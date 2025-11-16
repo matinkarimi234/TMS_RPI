@@ -11,5 +11,10 @@
   "Gray": "#888888",
 
   "ACCENT_GRADIENT_START": "#48dbfb",
-  "ACCENT_GRADIENT_END":   "#fadb5a"
+  "ACCENT_GRADIENT_END":   "#fadb5a",
+  "NORMAL_COLOR": "#00994D",
+  "WARNING_COLOR": "#D6A700",
+  "DANGER_COLOR": "#C00000"
+
+  
 }

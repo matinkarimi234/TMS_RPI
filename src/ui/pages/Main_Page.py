@@ -8,6 +8,7 @@ from core.protocol_manager_revised import TMSProtocol
 from ui.widgets.navigation_list_widget import NavigationListWidget
 from ui.widgets.pulse_bars_widget import PulseBarsWidget
 from ui.widgets.intensity_gauge import IntensityGauge
+from ui.widgets.temperature_widget import CoilTemperatureWidget
 
 
 class ParamsPage(QWidget):
@@ -32,8 +33,8 @@ class ParamsPage(QWidget):
         self.gpio_service = gpio_service
 
         # --- Header labels ---
-        self.lbl_name = QLabel("Protocol: <none>")
-        self.lbl_desc = QLabel("Description: <none>")
+        # self.lbl_name = QLabel("Protocol: <none>")
+        # self.lbl_desc = QLabel("Description: <none>")
 
         # --- Primary widgets ---
         self.intensity_gauge = IntensityGauge(self)
@@ -64,10 +65,10 @@ class ParamsPage(QWidget):
         #   LAYOUT SETUP (no inc/dec buttons anymore)
         # ---------------------------------------------------------
         self.top_panel = QWidget()
-        self.top_panel.setFixedHeight(50)
+        self.top_panel.setFixedHeight(80)  # slightly taller to fit the temperature widget
+        self.top_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
         self.bottom_panel = QWidget()
         self.bottom_panel.setFixedHeight(50)
-        self.top_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
         self.bottom_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
 
         # bottom row controls
@@ -91,11 +92,31 @@ class ParamsPage(QWidget):
         right_col.addWidget(self.list_widget, stretch=1)
         content.addLayout(right_col, stretch=1)
 
+        top_layout = QHBoxLayout(self.top_panel)
+        top_layout.setContentsMargins(5, 5, 5, 5)
+        top_layout.setAlignment(Qt.AlignRight)
+
+        # --- Coil temperature widget ---
+        self.coil_temp_widget = CoilTemperatureWidget(
+            warning_threshold=30,
+            danger_threshold=40
+        )
+        # maintain an aspect ratio of 1.4:1 while resizing
+        self.coil_temp_widget.setMaximumWidth(int(self.coil_temp_widget.height() * 1.4))
+
+        # apply current theme colors
+        # try:
+        #     self.coil_temp_widget.applyTheme(self.theme_manager, self.current_theme)
+        # except Exception:
+        #     pass
+
+        top_layout.addWidget(self.coil_temp_widget)
+
         # assemble main layout
         lay = QVBoxLayout(self)
         lay.addWidget(self.top_panel)
-        lay.addWidget(self.lbl_name)
-        lay.addWidget(self.lbl_desc)
+        # lay.addWidget(self.lbl_name)
+        # lay.addWidget(self.lbl_desc)
         lay.addLayout(content, stretch=1)
         lay.addWidget(self.bottom_panel)
 
@@ -108,8 +129,8 @@ class ParamsPage(QWidget):
     # ---------------------------------------------------------
     def set_protocol(self, proto: TMSProtocol):
         self.current_protocol = proto
-        self.lbl_name.setText(f"Protocol: {proto.name}")
-        self.lbl_desc.setText(f"Description: {getattr(proto, 'description', '<none>')}")
+        # self.lbl_name.setText(f"Protocol: {proto.name}")
+        # self.lbl_desc.setText(f"Description: {getattr(proto, 'description', '<none>')}")
 
         self.intensity_gauge.setFromProtocol(proto)
         self.pulse_widget.set_protocol(proto)
@@ -130,6 +151,7 @@ class ParamsPage(QWidget):
         if not self.current_protocol:
             return
         proto = self.current_protocol
+        self.pulse_widget.set_protocol(proto)
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
             row_widget = self.list_widget.itemWidget(item)
@@ -147,6 +169,7 @@ class ParamsPage(QWidget):
             row_widget.set_suffix(
                 f"{unit}   ({lo:.2f}–{hi:.2f})" if isinstance(lo, (float, int)) else unit
             )
+
 
     # ---------------------------------------------------------
     #   Range logic
@@ -272,6 +295,7 @@ class ParamsPage(QWidget):
         self.intensity_gauge.setPalette(pal)
         try:
             self.intensity_gauge.applyTheme(self.theme_manager, theme_name)
+            self.coil_temp_widget.applyTheme(self.theme_manager, theme_name)
         except Exception as e:
             print("Couldn't apply theme to gauge:", e)
 
@@ -285,6 +309,10 @@ class ParamsPage(QWidget):
         self._apply_theme_to_app(self.current_theme)
         if self.current_protocol:
             self._sync_ui_from_protocol()
+
+    def set_coil_temperature(self, temperature: float):
+        if hasattr(self, "coil_temp_widget"):
+            self.coil_temp_widget.setTemperature(temperature)
 
 
 __all__ = ["ParamsPage"]
