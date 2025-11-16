@@ -245,18 +245,35 @@ class PulseTrainView(QWidget):
         y_label: float,
         text: str
     ):
-        """Bracket from x0..x1 at y_top, text BELOW the bracket."""
+        """
+        Bracket from x0..x1 at y_top, text BELOW the bracket.
+
+        IMPORTANT:
+        - bracket tails end at a fixed length below y_top
+        - y_label is the text baseline (NOT the tail end)
+        """
         pen = QPen(self.palette().color(self.foregroundRole()))
         painter.setPen(pen)
 
-        painter.drawLine(int(x0), int(y_top), int(x0), int(y_label))
-        painter.drawLine(int(x1), int(y_top), int(x1), int(y_label))
+        # --- bracket geometry ---
+        tail_len = 10  # px, length of vertical tails
+        y_tail = y_top + tail_len
+
+        # vertical tails
+        painter.drawLine(int(x0), int(y_top), int(x0), int(y_tail))
+        painter.drawLine(int(x1), int(y_top), int(x1), int(y_tail))
+
+        # top horizontal line
         painter.drawLine(int(x0), int(y_top), int(x1), int(y_top))
 
+        # --- text BELOW the tails ---
         tw = painter.fontMetrics().horizontalAdvance(text)
         tx = (x0 + x1) / 2 - tw / 2
-        ty = int(y_label)
-        painter.drawText(int(tx), ty, text)
+
+        # y_label is already where we want the text baseline
+        painter.drawText(int(tx), int(y_label), text)
+
+
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -376,11 +393,14 @@ class PulseTrainView(QWidget):
         painter.setFont(font_ann)
         if group_count >= 2:
             ipi_text = f"{ipi_display_ms:.1f} ms"
-            # push further down so it doesn't collide with center label
-            ipi_top_y = baseline_y + 18
-            ipi_label_y = ipi_top_y + 18
 
-            # First interval (left group, first two pulses)
+            # bracket a bit below the baseline
+            ipi_top_y = baseline_y + 18
+
+            # text clearly below the tails (tail_len=10, plus a few px gap)
+            ipi_label_y = ipi_top_y + 30   # 10 = tail_len, 6 = extra gap
+
+            # First interval
             x0 = begin_x_positions[0]
             x1 = begin_x_positions[1]
             self._draw_bracket_with_label_below(
@@ -392,7 +412,7 @@ class PulseTrainView(QWidget):
                 ipi_text
             )
 
-            # Last interval (right group, last two pulses)
+            # Last interval
             x0_last = end_x_positions[-2]
             x1_last = end_x_positions[-1]
             self._draw_bracket_with_label_below(
@@ -403,6 +423,7 @@ class PulseTrainView(QWidget):
                 ipi_label_y,
                 ipi_text
             )
+
 
         # ---- CENTER LABEL: "........xN........" (N = pulses_per_train) ----
         label_font = QFont(painter.font())
@@ -488,6 +509,8 @@ class PulseBarsWidget(QWidget):
         # runtime state
         self._running = False
         self._start_time = 0.0
+        self._paused = False
+        self._elapsed_offset = 0.0  # seconds already run
 
         # protocol definition
         self._train_count = 1
@@ -543,7 +566,7 @@ class PulseBarsWidget(QWidget):
         self._pulses_per_train = proto.pulses_per_train
         self._freq_hz = proto.frequency_hz
         self._iti_s = proto.inter_train_interval_s
-        self._amp_label = f"{int(round(proto.intensity_percent_of_mt))}"
+        self._amp_label = f"{int(round(proto.intensity_percent_of_mt_init * proto.subject_mt_percent_init / 100))}%"
         self._ipi_ms = proto.inter_pulse_interval_ms
         self._burst_pulses_count = proto.burst_pulses_count
 
@@ -602,6 +625,14 @@ class PulseBarsWidget(QWidget):
         self._running = False
         self.timer.stop()
         self.status_bar.set_button_running(False)
+
+    def pause(self):
+        if not self._running:
+            return
+        self._elapsed_offset += time.monotonic() - self._start_time
+        self._running = False
+        self.timer.stop()
+        self.status_bar.set_button_running(False)  # and maybe change text to "Resume"
 
     # ---------- internal helpers ----------
 
@@ -694,6 +725,8 @@ class PulseBarsWidget(QWidget):
         st = self._get_cycle_state(elapsed)
         phase = st["phase"]
         train_idx = st["train_idx"]
+
+        elapsed = self._elapsed_offset + (now - self._start_time)
 
         # keep train index in sync (for future use)
         self.train_view.set_train_position(train_idx, self._train_count)
