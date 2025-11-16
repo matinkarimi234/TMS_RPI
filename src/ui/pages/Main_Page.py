@@ -9,6 +9,7 @@ from ui.widgets.navigation_list_widget import NavigationListWidget
 from ui.widgets.pulse_bars_widget import PulseBarsWidget
 from ui.widgets.intensity_gauge import IntensityGauge
 from ui.widgets.temperature_widget import CoilTemperatureWidget
+from ui.widgets.session_control_widget import SessionControlWidget
 
 
 class ParamsPage(QWidget):
@@ -72,15 +73,32 @@ class ParamsPage(QWidget):
         self.bottom_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
 
         # bottom row controls
+        # hbox_bottom = QHBoxLayout(self.bottom_panel)
+        # hbox_bottom.setContentsMargins(10, 0, 10, 0)
+        # self.btn_select_protocol = QPushButton("Select Protocol")
+        # self.btn_select_protocol.clicked.connect(self.request_protocol_list.emit)
+        # self.btn_toggle_theme = QPushButton("Toggle Theme")
+        # self.btn_toggle_theme.clicked.connect(self._toggle_theme)
+        # hbox_bottom.addWidget(self.btn_select_protocol)
+        # hbox_bottom.addStretch(1)
+        # hbox_bottom.addWidget(self.btn_toggle_theme)
+        # bottom row controls
         hbox_bottom = QHBoxLayout(self.bottom_panel)
         hbox_bottom.setContentsMargins(10, 0, 10, 0)
+
         self.btn_select_protocol = QPushButton("Select Protocol")
         self.btn_select_protocol.clicked.connect(self.request_protocol_list.emit)
+
         self.btn_toggle_theme = QPushButton("Toggle Theme")
         self.btn_toggle_theme.clicked.connect(self._toggle_theme)
+
+        # NEW: session control widget (Pause, Start/Stop as frames)
+        self.session_controls = SessionControlWidget(self)
+
         hbox_bottom.addWidget(self.btn_select_protocol)
         hbox_bottom.addStretch(1)
         hbox_bottom.addWidget(self.btn_toggle_theme)
+        hbox_bottom.addWidget(self.session_controls, alignment=Qt.AlignRight)
 
         # content layout
         content = QHBoxLayout()
@@ -123,6 +141,11 @@ class ParamsPage(QWidget):
         # apply theme + connect GPIO
         self._apply_theme_to_app(self.current_theme)
         self._connect_gpio()
+
+        # ---- connect session controls to pulse widget ----
+        self.session_controls.startRequested.connect(self._on_session_start_requested)
+        self.session_controls.stopRequested.connect(self._on_session_stop_requested)
+        self.session_controls.pauseRequested.connect(self._on_session_pause_requested)
 
     # ---------------------------------------------------------
     #   Protocol binding
@@ -280,6 +303,29 @@ class ParamsPage(QWidget):
             self.list_widget.select_previous()
         elif pin == 22:  # e.g., move selection down
             self.list_widget.select_next()
+
+
+    # ---------------------------------------------------------
+    #   Session control handlers
+    # ---------------------------------------------------------
+    def _on_session_start_requested(self):
+        # start or resume the session
+        if hasattr(self.pulse_widget, "start"):
+            self.pulse_widget.start()
+        # assume running, not paused
+        self.session_controls.set_state(running=True, paused=False)
+
+    def _on_session_stop_requested(self):
+        if hasattr(self.pulse_widget, "stop"):
+            self.pulse_widget.stop()
+        # reset to idle
+        self.session_controls.set_state(running=False, paused=False)
+
+    def _on_session_pause_requested(self):
+        if hasattr(self.pulse_widget, "pause"):
+            self.pulse_widget.pause()
+        # mark as paused (not running)
+        self.session_controls.set_state(running=False, paused=True)
 
     # ---------------------------------------------------------
     #   Theme support

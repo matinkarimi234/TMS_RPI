@@ -461,13 +461,13 @@ class SessionStatusBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.btn_start = QPushButton("Start")
-        self.btn_start.setObjectName("StartStopButton")
+        # self.btn_start = QPushButton("Start")
+        # self.btn_start.setObjectName("StartStopButton")
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addStretch(1)
-        lay.addWidget(self.btn_start)
+        # lay.addWidget(self.btn_start)
         lay.addStretch(1)
 
     # kept for compatibility; they do nothing now
@@ -477,8 +477,8 @@ class SessionStatusBar(QWidget):
     def set_remaining_text(self, txt: str):
         pass
 
-    def set_button_running(self, running: bool):
-        self.btn_start.setText("Stop" if running else "Start")
+    # def set_button_running(self, running: bool):
+    #     self.btn_start.setText("Stop" if running else "Start")
 
 
 ###############################################################################
@@ -504,13 +504,14 @@ class PulseBarsWidget(QWidget):
 
         self.train_view = PulseTrainView(self)
         self.rest_circle = CountdownCircle(self)
+        # SessionStatusBar is still used only for styling, no start button logic now
         self.status_bar = SessionStatusBar(self)
 
         # runtime state
         self._running = False
-        self._start_time = 0.0
         self._paused = False
-        self._elapsed_offset = 0.0  # seconds already run
+        self._start_time = 0.0          # last start/resume timestamp
+        self._elapsed_offset_s = 0.0    # accumulated elapsed before current run
 
         # protocol definition
         self._train_count = 1
@@ -521,7 +522,7 @@ class PulseBarsWidget(QWidget):
         self._total_duration_s = 1.0
         self._amp_label = "120"
         self._ipi_ms = 0.0
-        self._burst_pulses_count = 1    # NEW: 1..5 from protocol
+        self._burst_pulses_count = 1    # 1..5 from protocol
 
         # layout
         header_box = QHBoxLayout()
@@ -540,9 +541,6 @@ class PulseBarsWidget(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(50)  # ~20 FPS
         self.timer.timeout.connect(self._tick)
-
-        # start/stop hookup
-        self.status_bar.btn_start.clicked.connect(self._on_start_stop_clicked)
 
         # default visuals
         self._show_train_mode()
@@ -566,7 +564,7 @@ class PulseBarsWidget(QWidget):
         self._pulses_per_train = proto.pulses_per_train
         self._freq_hz = proto.frequency_hz
         self._iti_s = proto.inter_train_interval_s
-        self._amp_label = f"{int(round(proto.intensity_percent_of_mt_init * proto.subject_mt_percent_init / 100))}%"
+        self._amp_label = f"{int(round(proto.intensity_percent_of_mt))}"
         self._ipi_ms = proto.inter_pulse_interval_ms
         self._burst_pulses_count = proto.burst_pulses_count
 
@@ -578,7 +576,7 @@ class PulseBarsWidget(QWidget):
         # full session duration (stim+rests)
         self._total_duration_s = proto.total_duration_s
 
-        # reset UI state
+        # reset session state (also resets offset/paused)
         self.stop()
 
         # set initial train index (even if not drawn)
@@ -604,35 +602,64 @@ class PulseBarsWidget(QWidget):
 
     # ---------- session control ----------
 
-    def _on_start_stop_clicked(self):
-        if self._running:
-            self.stop()
-        else:
-            self.start()
-
     def start(self):
+        """
+        Start or resume the session.
+
+        - If previously paused -> resume from stored _elapsed_offset_s
+        - If fresh (not paused) -> start from t = 0
+        """
         if self._running:
             return
+
+        if not self._paused:
+            # fresh start: reset elapsed offset
+            self._elapsed_offset_s = 0.0
+
         self._running = True
+        self._paused = False
         self._start_time = time.monotonic()
         self.timer.start()
-        self.status_bar.set_button_running(True)
-
-    def stop(self):
-        if not self._running:
-            self.status_bar.set_button_running(False)
-            return
-        self._running = False
-        self.timer.stop()
-        self.status_bar.set_button_running(False)
 
     def pause(self):
+        """
+        Pause the session (freeze playhead where it is).
+        """
         if not self._running:
             return
-        self._elapsed_offset += time.monotonic() - self._start_time
+
+        now = time.monotonic()
+        # accumulate elapsed time into offset
+        self._elapsed_offset_s += now - self._start_time
+
         self._running = False
+        self._paused = True
         self.timer.stop()
-        self.status_bar.set_button_running(False)  # and maybe change text to "Resume"
+
+    def stop(self):
+        """
+        Fully stop and reset the session.
+        """
+        if not self._running and not self._paused:
+            # already fully stopped
+            return
+
+        self._running = False
+        self._paused = False
+        self._elapsed_offset_s = 0.0
+        self.timer.stop()
+
+        # Optionally reset visuals to t=0
+        self.train_view.set_train_position(0, self._train_count)
+        self.train_view.set_burst_state(
+            pulses_per_train=self._pulses_per_train,
+            freq_hz=self._freq_hz,
+            amplitude_label=self._amp_label,
+            burst_progress=0.0,
+            ipi_ms=self._ipi_ms,
+            burst_pulses_count=self._burst_pulses_count,
+        )
+        self._show_train_mode()
 
     # ---------- internal helpers ----------
 
@@ -714,25 +741,27 @@ class PulseBarsWidget(QWidget):
 
     def _tick(self):
         now = time.monotonic()
-        elapsed = now - self._start_time
+        # elapsed = time since last start + any previous runs
+        elapsed = self._elapsed_offset_s + (now - self._start_time)
 
-        # clamp
+        # clamp at total duration
         if elapsed >= self._total_duration_s:
             elapsed = self._total_duration_s
-            self.stop()
+            # update offset so state is consistent, then stop
+            self._elapsed_offset_s = elapsed
+            self._running = False
+            self._paused = False
+            self.timer.stop()
 
         # where are we in the protocol
         st = self._get_cycle_state(elapsed)
         phase = st["phase"]
         train_idx = st["train_idx"]
 
-        elapsed = self._elapsed_offset + (now - self._start_time)
-
-        # keep train index in sync (for future use)
+        # keep train index in sync
         self.train_view.set_train_position(train_idx, self._train_count)
 
         if phase == "burst":
-            # show pulses + brackets + center label
             self._show_train_mode()
             self.train_view.set_burst_state(
                 pulses_per_train=self._pulses_per_train,
@@ -744,7 +773,6 @@ class PulseBarsWidget(QWidget):
             )
 
         elif phase == "rest":
-            # hide pulses, show countdown ring
             self._show_rest_mode()
             self.rest_circle.set_fraction_and_label(
                 frac=st["phase_progress"],
