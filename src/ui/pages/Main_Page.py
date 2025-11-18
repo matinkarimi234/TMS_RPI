@@ -26,6 +26,9 @@ class ParamsPage(QWidget):
 
     request_protocol_list = Signal()
 
+    # IPI value to enforce when burst_pulses_count == 1
+    IPI_FOR_SINGLE_BURST_MS = 10.0
+
     def __init__(
         self,
         theme_manager: ThemeManager,
@@ -168,37 +171,10 @@ class ParamsPage(QWidget):
     # ---------------------------------------------------------
     #   UI Sync / ranges / modifiers
     # ---------------------------------------------------------
-    def _sync_ui_from_protocol(self):
-        if not self.current_protocol:
-            return
-        proto = self.current_protocol
-        self.pulse_widget.set_protocol(proto)
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            row_widget = self.list_widget.itemWidget(item)
-            meta = item.data(Qt.UserRole) or {}
-            key = meta.get("key")
-            unit = meta.get("unit", "")
-            if not key or not row_widget:
-                continue
-            try:
-                val = getattr(proto, key)
-            except AttributeError:
-                continue
-            lo, hi = self._get_param_range(proto)
-            row_widget.set_value(val)
-            row_widget.set_suffix(
-                f"{unit}   ({lo:.2f}–{hi:.2f})" if isinstance(lo, (float, int)) else unit
-            )
-
-    def _get_param_range(self, proto: TMSProtocol):
-        key = None
-        item = self.list_widget.currentItem()
-        if item:
-            meta = item.data(Qt.UserRole)
-            key = meta.get("key") if meta else None
-        if not key:
-            return 0, 1
+    def _get_param_range_for_key(self, proto: TMSProtocol, key: str):
+        """
+        Per-parameter range; used for correct suffix display AND clamping.
+        """
         if key == "frequency_hz":
             return proto.FREQ_MIN, proto._calculate_max_frequency_hz()
         elif key == "inter_pulse_interval_ms":
@@ -218,18 +194,78 @@ class ParamsPage(QWidget):
         else:
             return 0, 1
 
-    def _modify_value(self, delta: float):
+    def _get_param_range(self, proto: TMSProtocol):
+        """
+        Backwards compatible: range for the currently selected item.
+        Only used where 'current row' semantics are needed.
+        """
+        item = self.list_widget.currentItem()
+        if not item:
+            return 0, 1
+        meta = item.data(Qt.UserRole) or {}
+        key = meta.get("key")
+        if not key:
+            return 0, 1
+        return self._get_param_range_for_key(proto, key)
+
+    def _sync_ui_from_protocol(self):
         if not self.current_protocol:
             return
+        proto = self.current_protocol
+        self.pulse_widget.set_protocol(proto)
+
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            row_widget = self.list_widget.itemWidget(item)
+            meta = item.data(Qt.UserRole) or {}
+            key = meta.get("key")
+            unit = meta.get("unit", "")
+            if not key or not row_widget:
+                continue
+
+            try:
+                val = getattr(proto, key)
+            except AttributeError:
+                continue
+
+            lo, hi = self._get_param_range_for_key(proto, key)
+            row_widget.set_value(val)
+
+            if isinstance(lo, (float, int)) and isinstance(hi, (float, int)):
+                row_widget.set_suffix(f"{unit}   ({lo:.2f}–{hi:.2f})")
+            else:
+                row_widget.set_suffix(unit)
+
+    def _modify_value(self, delta: float):
+        """
+        Modify the currently selected parameter by 'delta' encoder steps.
+        Handles:
+        - Correct per-parameter ranges.
+        - Locking IPI to 10 ms when burst_pulses_count == 1.
+        - Clamping to [lo, hi] to avoid insane values.
+        """
+        if not self.current_protocol:
+            return
+
         item = self.list_widget.currentItem()
         if not item:
             return
+
         meta = item.data(Qt.UserRole) or {}
         key = meta.get("key")
         if not key:
             return
 
-        lo, hi = self._get_param_range(self.current_protocol)
+        proto = self.current_protocol
+
+        # --- HARD RULE: if burst_pulses_count == 1, lock IPI at IPI_FOR_SINGLE_BURST_MS ---
+        if key == "inter_pulse_interval_ms" and proto.burst_pulses_count == 1:
+            proto.inter_pulse_interval_ms = self.IPI_FOR_SINGLE_BURST_MS
+            self._sync_ui_from_protocol()
+            return
+        # -----------------------------------------------------------------------
+
+        lo, hi = self._get_param_range_for_key(proto, key)
         row_widget = self.list_widget.itemWidget(item)
         if row_widget is None:
             return
@@ -237,8 +273,9 @@ class ParamsPage(QWidget):
         try:
             cur_val = float(row_widget.get_value())
         except (ValueError, TypeError):
-            cur_val = getattr(self.current_protocol, key, 0.0)
+            cur_val = getattr(proto, key, 0.0)
 
+        # Step size per parameter type
         if key == "frequency_hz":
             step = 0.1 if cur_val < 1.0 else 1.0
         elif key in ("inter_pulse_interval_ms", "inter_train_interval_s"):
@@ -250,15 +287,28 @@ class ParamsPage(QWidget):
         else:
             step = 1
 
+        # Boundary guard – do not overshoot out of range
         if delta > 0 and cur_val + step > hi:
             return
         if delta < 0 and cur_val - step < lo:
             return
 
         new_val = cur_val + delta * step
+
+        # Rounding for frequency
         if key == "frequency_hz":
             new_val = round(new_val, 1) if new_val < 1.0 else round(new_val)
-        setattr(self.current_protocol, key, new_val)
+
+        # Extra safety: clamp into [lo, hi] (prevents crazy values)
+        if isinstance(new_val, (float, int)):
+            new_val = max(lo, min(hi, new_val))
+
+        setattr(proto, key, new_val)
+
+        # If burst_pulses_count has just become 1, enforce IPI lock now
+        if key == "burst_pulses_count" and int(proto.burst_pulses_count) == 1:
+            proto.inter_pulse_interval_ms = self.IPI_FOR_SINGLE_BURST_MS
+
         self._sync_ui_from_protocol()
 
     # ---------------------------------------------------------

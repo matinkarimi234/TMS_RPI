@@ -11,7 +11,7 @@ def Calculate_Checksum(buf: bytearray , length:int) -> int:
     for i in range(0,length - 1):
         sum += buf[i]
     
-    return sum
+    return int(sum % 256)
 
 class CommandManager(QObject):
     packet_ready = Signal(bytes)

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import List, Dict, Any, ClassVar
 
+
 # ---------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------
@@ -143,8 +144,11 @@ class TMSProtocol:
         """Validate timing parameters against the physics constraint."""
         if self._burst_pulses_count <= 1:
             return True
-        val = (self._inter_pulse_interval_ms * (self._burst_pulses_count - 1)) * self._frequency_hz / 1000.0
+        val = (
+            self._inter_pulse_interval_ms * (self._burst_pulses_count - 1)
+        ) * self._frequency_hz / 1000.0
         return val <= 1.0 + 1e-12
+
     def get_absolute_intensity(self) -> float:
         return (self._subject_mt_percent * self._intensity_percent_of_mt) / 100
 
@@ -195,13 +199,21 @@ class TMSProtocol:
 
     @inter_pulse_interval_ms.setter
     def inter_pulse_interval_ms(self, value: float):
-        self._inter_pulse_interval_ms = clamp(value, self.IPI_MIN_HARD, self.IPI_MAX_HARD)
+        self._inter_pulse_interval_ms = clamp(
+            value, self.IPI_MIN_HARD, self.IPI_MAX_HARD
+        )
 
     @property
     def burst_pulses_count(self) -> int:
         """Free user choice among allowed integers."""
         return self._burst_pulses_count
-    
+
+    @burst_pulses_count.setter
+    def burst_pulses_count(self, value: int):
+        self._burst_pulses_count = self._snap_to_allowed(
+            value, self.BURST_PULSES_ALLOWED
+        )
+
     @property
     def total_duration_s(self) -> float:
         """
@@ -222,10 +234,6 @@ class TMSProtocol:
             total += self.inter_train_interval_s * (self.train_count - 1)
 
         return total
-
-    @burst_pulses_count.setter
-    def burst_pulses_count(self, value: int):
-        self._burst_pulses_count = self._snap_to_allowed(value, self.BURST_PULSES_ALLOWED)
 
     # -----------------------------------------------------------------
     # Serialization Helpers
@@ -260,11 +268,11 @@ class ProtocolManager:
 
     def save_to_json(self, filepath: Path | str):
         data = {name: p.to_dict() for name, p in self.protocols.items()}
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
 
     def load_from_json(self, filepath: Path | str):
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         if isinstance(data, dict):
