@@ -145,7 +145,7 @@ class ParamsPage(QWidget):
         # UI -> backend
         self.session_controls.startRequested.connect(self._on_session_start_requested)
         self.session_controls.stopRequested.connect(self._on_session_stop_requested)
-        self.session_controls.pauseRequested.connect(self._on_session_pause_requested)
+        self.session_controls.pauseRequested.connect(self._on_session_start_requested)
 
     # ---------------------------------------------------------
     #   Protocol binding
@@ -299,7 +299,7 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ---------------------------------------------------------
     def _on_session_start_requested(self):
-        if self.session_controls.get_state() == "start":
+        if self.session_controls.get_state() == "stop" or self.session_controls.get_state() == "pause":
             if hasattr(self.pulse_widget, "start"):
                 self.pulse_widget.start()
             self.session_controls.set_state(running=True, paused=False)
@@ -310,7 +310,7 @@ class ParamsPage(QWidget):
                 else:
                     intensity = int(self.intensity_gauge.value())
                 self.backend.start_session(intensity)
-        elif "pause":
+        elif "start":
             if hasattr(self.pulse_widget, "pause"):
                 self.pulse_widget.pause()
             self.session_controls.set_state(running=False, paused=True)
@@ -329,7 +329,7 @@ class ParamsPage(QWidget):
         self.session_controls.set_state(running=False, paused=True)
 
     def _on_protocols_list_requested(self):
-        self.request_protocol_list.emit
+        self.request_protocol_list.emit()
 
     # ---------------------------------------------------------
     #   Theme support
