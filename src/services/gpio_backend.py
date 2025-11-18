@@ -60,6 +60,7 @@ class GPIO_Backend(QObject):
     protocolPressed = Signal()
     enPressed = Signal()
     mtPressed = Signal()
+    reservedPressed = Signal()          # NEW: reserved hardware button
     arrowUpPressed = Signal()
     arrowDownPressed = Signal()
 
@@ -129,17 +130,10 @@ class GPIO_Backend(QObject):
     # ------------------------------------------------------------------
     @Slot()
     def start(self) -> None:
-        """
-        Start GPIOService (thread + event detection).
-        Call once from your main window / app init.
-        """
         self._gpio_svc.start()
 
     @Slot()
     def stop(self) -> None:
-        """
-        Stop GPIOService and clean up GPIOs.
-        """
         self._gpio_svc.stop()
 
     # ------------------------------------------------------------------
@@ -148,7 +142,6 @@ class GPIO_Backend(QObject):
     def _ensure_leds_setup(self) -> None:
         if self._leds_setup:
             return
-        # Configure LED pins as outputs in the shared controller
         self._ctl.setmode_bcm()
         self._ctl.setup_output(RED_LED_PIN)
         self._ctl.setup_output(GREEN_LED_PIN)
@@ -156,17 +149,11 @@ class GPIO_Backend(QObject):
 
     @Slot(bool)
     def set_red_led(self, on: bool) -> None:
-        """
-        Simple on/off control for red LED.
-        """
         self._ensure_leds_setup()
         self._ctl.output(RED_LED_PIN, self._ctl.HIGH if on else self._ctl.LOW)
 
     @Slot(bool)
     def set_green_led(self, on: bool) -> None:
-        """
-        Simple on/off control for green LED.
-        """
         self._ensure_leds_setup()
         self._ctl.output(GREEN_LED_PIN, self._ctl.HIGH if on else self._ctl.LOW)
 
@@ -198,6 +185,8 @@ class GPIO_Backend(QObject):
             self.enPressed.emit()
         elif bid == ButtonId.MT:
             self.mtPressed.emit()
+        elif bid == ButtonId.RESERVED:       # NEW: reserved -> separate signal
+            self.reservedPressed.emit()
         elif bid == ButtonId.ARROW_UP:
             self.arrowUpPressed.emit()
         elif bid == ButtonId.ARROW_DOWN:
@@ -212,8 +201,4 @@ class GPIO_Backend(QObject):
 
     @Slot(int, int)
     def _on_encoder_step(self, enc_id: int, step: int) -> None:
-        """
-        enc_id is from EncoderSpec.id (0 in your current config).
-        For now we just forward the step (+1/-1).
-        """
         self.encoderStep.emit(step)
