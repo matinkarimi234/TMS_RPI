@@ -94,7 +94,7 @@ class UARTManager(QObject):
                         bad += 1
                         self.error.emit("Checksum/Header error")
                 else:
-                    time.sleep(0.01)
+                    time.sleep(0.1)
 
                 if bad >= 5:
                     self.error.emit("5 bad packets – resetting")
