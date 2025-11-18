@@ -98,7 +98,7 @@ class UARTManager(QObject):
 
                 if bad >= 5:
                     self.error.emit("5 bad packets – resetting")
-                    self._reset()
+                    # self._reset()
                     bad = 0
 
             except Exception as e:
