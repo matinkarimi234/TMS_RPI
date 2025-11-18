@@ -310,7 +310,7 @@ class ParamsPage(QWidget):
                 else:
                     intensity = int(self.intensity_gauge.value())
                 self.backend.start_session(intensity)
-        elif "start":
+        else:
             if hasattr(self.pulse_widget, "pause"):
                 self.pulse_widget.pause()
             self.session_controls.set_state(running=False, paused=True)
