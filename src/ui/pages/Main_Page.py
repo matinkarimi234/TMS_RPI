@@ -299,7 +299,7 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ---------------------------------------------------------
     def _on_session_start_requested(self):
-        if self.session_controls.get_state() == "pause":
+        if self.session_controls.get_state() == "start":
             if hasattr(self.pulse_widget, "start"):
                 self.pulse_widget.start()
             self.session_controls.set_state(running=True, paused=False)
