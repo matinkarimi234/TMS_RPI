@@ -299,8 +299,7 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ---------------------------------------------------------
     def _on_session_start_requested(self):
-        print("Event of GPIO")
-        if self.session_controls.get_state() == "start":
+        if self.session_controls.get_state() == "Start":
             if hasattr(self.pulse_widget, "start"):
                 self.pulse_widget.start()
             self.session_controls.set_state(running=True, paused=False)
@@ -311,8 +310,7 @@ class ParamsPage(QWidget):
                 else:
                     intensity = int(self.intensity_gauge.value())
                 self.backend.start_session(intensity)
-        else:
-            print(f"state :{self.session_controls.get_state()}")
+        elif self.session_controls.get_state() == "Pause":
             if hasattr(self.pulse_widget, "pause"):
                 self.pulse_widget.pause()
             self.session_controls.set_state(running=False, paused=True)
