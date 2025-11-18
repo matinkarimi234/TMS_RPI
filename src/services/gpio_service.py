@@ -1,3 +1,4 @@
+# services/gpio_service.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,6 +30,10 @@ class GPIOSignals(QObject):
 
 
 class _GPIOWorker(QObject):
+    """
+    Worker running in a dedicated QThread to handle GPIO events.
+    """
+
     def __init__(
         self,
         button_pins: Sequence[int],
@@ -133,9 +138,13 @@ class _GPIOWorker(QObject):
 
 
 class GPIOService(QObject):
-    button_pressed = Signal(int)
-    button_released = Signal(int)
-    encoder_step = Signal(int, int)   # (encoder_id, +1/-1)
+    """
+    Service that owns the GPIO worker thread and exposes simple signals.
+    """
+
+    button_pressed = Signal(int)          # pin
+    button_released = Signal(int)         # pin
+    encoder_step = Signal(int, int)       # (encoder_id, +1/-1)
     error = Signal(str)
     ready = Signal()
     stopped = Signal()

@@ -1,8 +1,12 @@
+# ui/pages/Main_Page.py
+
 from typing import Optional
+
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 )
+
 from app.theme_manager import ThemeManager
 from core.protocol_manager_revised import TMSProtocol
 from ui.widgets.navigation_list_widget import NavigationListWidget
@@ -11,6 +15,7 @@ from ui.widgets.intensity_gauge import IntensityGauge
 from ui.widgets.temperature_widget import CoilTemperatureWidget
 from ui.widgets.session_control_widget import SessionControlWidget
 from services.uart_backend import Uart_Backend
+from services.gpio_backend import GPIO_Backend   # NEW
 
 from config.settings import WARNING_TEMPERATURE_THRESHOLD, DANGER_TEMPERATURE_THRESHOLD
 
@@ -18,7 +23,7 @@ from config.settings import WARNING_TEMPERATURE_THRESHOLD, DANGER_TEMPERATURE_TH
 class ParamsPage(QWidget):
     """
     Parameter editor for an active TMSProtocol.
-    Revised to remove on-screen edit buttons and use GPIOService for input.
+    Uses GPIO_Backend (hardware buttons + encoder) for input.
     """
 
     request_protocol_list = Signal()
@@ -26,7 +31,7 @@ class ParamsPage(QWidget):
     def __init__(
         self,
         theme_manager: ThemeManager,
-        gpio_service: Optional["GPIOService"] = None,
+        gpio_backend: Optional[GPIO_Backend] = None,
         initial_theme: str = "dark",
         parent=None,
     ):
@@ -35,11 +40,7 @@ class ParamsPage(QWidget):
         self.current_theme = initial_theme
         self.current_protocol: Optional[TMSProtocol] = None
         self.backend: Optional[Uart_Backend] = None
-        self.gpio_service = gpio_service
-
-        # --- Header labels ---
-        # self.lbl_name = QLabel("Protocol: <none>")
-        # self.lbl_desc = QLabel("Description: <none>")
+        self.gpio_backend: Optional[GPIO_Backend] = gpio_backend
 
         # --- Primary widgets ---
         self.intensity_gauge = IntensityGauge(self)
@@ -67,7 +68,7 @@ class ParamsPage(QWidget):
         self.list_widget.setCurrentRow(0)
 
         # ---------------------------------------------------------
-        #   LAYOUT SETUP (no inc/dec buttons anymore)
+        #   LAYOUT SETUP
         # ---------------------------------------------------------
         self.top_panel = QWidget()
         self.top_panel.setFixedHeight(80)  # slightly taller to fit the temperature widget
@@ -76,16 +77,6 @@ class ParamsPage(QWidget):
         self.bottom_panel.setFixedHeight(50)
         self.bottom_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
 
-        # bottom row controls
-        # hbox_bottom = QHBoxLayout(self.bottom_panel)
-        # hbox_bottom.setContentsMargins(10, 0, 10, 0)
-        # self.btn_select_protocol = QPushButton("Select Protocol")
-        # self.btn_select_protocol.clicked.connect(self.request_protocol_list.emit)
-        # self.btn_toggle_theme = QPushButton("Toggle Theme")
-        # self.btn_toggle_theme.clicked.connect(self._toggle_theme)
-        # hbox_bottom.addWidget(self.btn_select_protocol)
-        # hbox_bottom.addStretch(1)
-        # hbox_bottom.addWidget(self.btn_toggle_theme)
         # bottom row controls
         hbox_bottom = QHBoxLayout(self.bottom_panel)
         hbox_bottom.setContentsMargins(10, 0, 10, 0)
@@ -96,7 +87,7 @@ class ParamsPage(QWidget):
         self.btn_toggle_theme = QPushButton("Toggle Theme")
         self.btn_toggle_theme.clicked.connect(self._toggle_theme)
 
-        # NEW: session control widget (Pause, Start/Stop as frames)
+        # Session control widget (Pause, Start/Stop as frames)
         self.session_controls = SessionControlWidget(self)
 
         hbox_bottom.addWidget(self.btn_select_protocol)
@@ -121,31 +112,26 @@ class ParamsPage(QWidget):
         # --- Coil temperature widget ---
         self.coil_temp_widget = CoilTemperatureWidget(
             warning_threshold=WARNING_TEMPERATURE_THRESHOLD,
-            danger_threshold=DANGER_TEMPERATURE_THRESHOLD
+            danger_threshold=DANGER_TEMPERATURE_THRESHOLD,
         )
         # maintain an aspect ratio of 1.4:1 while resizing
         self.coil_temp_widget.setMaximumWidth(int(self.coil_temp_widget.height() * 1.4))
-
-        # apply current theme colors
-        # try:
-        #     self.coil_temp_widget.applyTheme(self.theme_manager, self.current_theme)
-        # except Exception:
-        #     pass
 
         top_layout.addWidget(self.coil_temp_widget)
 
         # assemble main layout
         lay = QVBoxLayout(self)
         lay.addWidget(self.top_panel)
-        # lay.addWidget(self.lbl_name)
-        # lay.addWidget(self.lbl_desc)
         lay.addLayout(content, stretch=1)
         lay.addWidget(self.bottom_panel)
 
         # apply theme + connect GPIO
         self._apply_theme_to_app(self.current_theme)
-        self._connect_gpio()
+        self._connect_gpio_backend()
 
+    # ---------------------------------------------------------
+    #   Bind UART backend
+    # ---------------------------------------------------------
     def bind_backend(self, backend: Uart_Backend):
         """
         Called from MainWindow. Hook UI signals to backend signals/slots.
@@ -160,13 +146,12 @@ class ParamsPage(QWidget):
         self.session_controls.startRequested.connect(self._on_session_start_requested)
         self.session_controls.stopRequested.connect(self._on_session_stop_requested)
         self.session_controls.pauseRequested.connect(self._on_session_pause_requested)
+
     # ---------------------------------------------------------
     #   Protocol binding
     # ---------------------------------------------------------
     def set_protocol(self, proto: TMSProtocol):
         self.current_protocol = proto
-        # self.lbl_name.setText(f"Protocol: {proto.name}")
-        # self.lbl_desc.setText(f"Description: {getattr(proto, 'description', '<none>')}")
 
         self.intensity_gauge.setFromProtocol(proto)
         self.pulse_widget.set_protocol(proto)
@@ -205,7 +190,6 @@ class ParamsPage(QWidget):
             row_widget.set_suffix(
                 f"{unit}   ({lo:.2f}–{hi:.2f})" if isinstance(lo, (float, int)) else unit
             )
-
 
     # ---------------------------------------------------------
     #   Range logic
@@ -287,36 +271,39 @@ class ParamsPage(QWidget):
         self._sync_ui_from_protocol()
 
     # ---------------------------------------------------------
-    #   GPIO Integration — uses your signals
+    #   GPIO backend integration
     # ---------------------------------------------------------
-    def _connect_gpio(self):
-        """Connects the GPIOService events (buttons + encoders) to UI actions."""
-        if not self.gpio_service:
+    def _connect_gpio_backend(self):
+        """
+        Connects the GPIO_Backend events (buttons + encoder) to UI actions.
+        """
+        if not self.gpio_backend:
             return
 
-        # Connect encoder rotation: (enc_id, step)
-        if hasattr(self.gpio_service, "encoder_step"):
-            self.gpio_service.encoder_step.connect(self._on_encoder_rotation)
+        # Encoder rotation: step (+1 / -1)
+        self.gpio_backend.encoderStep.connect(self._on_encoder_step_hw)
 
-        # (Optional) use button pins for navigation or functions
-        if hasattr(self.gpio_service, "button_pressed"):
-            self.gpio_service.button_pressed.connect(self._on_button_press)
+        # Navigation buttons
+        self.gpio_backend.arrowUpPressed.connect(self._on_nav_up)
+        self.gpio_backend.arrowDownPressed.connect(self._on_nav_down)
 
-    def _on_encoder_rotation(self, enc_id: int, step: int):
-        """Rotate active parameter value up/down depending on direction."""
+        # Session control from hardware buttons
+        self.gpio_backend.startPausePressed.connect(self._on_session_start_requested)
+        self.gpio_backend.stopPressed.connect(self._on_session_stop_requested)
+        # You can map EN / MT / SINGLE_PULSE here later if you want.
+        # self.gpio_backend.singlePulsePressed.connect(...)
+
+    def _on_encoder_step_hw(self, step: int):
+        """
+        HW encoder step: positive = increment, negative = decrement.
+        """
         self._modify_value(float(step))
 
-    def _on_button_press(self, pin: int):
-        """
-        Example GPIO button behavior.
-        Map pins to parameter navigation.
-        """
-        # Adjust these pin numbers to your hardware mapping
-        if pin == 17:  # e.g., move selection up
-            self.list_widget.select_previous()
-        elif pin == 22:  # e.g., move selection down
-            self.list_widget.select_next()
+    def _on_nav_up(self):
+        self.list_widget.select_previous()
 
+    def _on_nav_down(self):
+        self.list_widget.select_next()
 
     # ---------------------------------------------------------
     #   Session control handlers (UI <-> backend)
@@ -347,7 +334,7 @@ class ParamsPage(QWidget):
         if hasattr(self.pulse_widget, "pause"):
             self.pulse_widget.pause()
         self.session_controls.set_state(running=False, paused=True)
-        # You can add a backend.pause_session() later if needed
+        # You can add a backend.pause_session() later if needed.
 
     # ---------------------------------------------------------
     #   Theme support
@@ -378,13 +365,12 @@ class ParamsPage(QWidget):
         if self.current_protocol:
             self._sync_ui_from_protocol()
 
+    # ---------------------------------------------------------
+    #   Temperature + intensity from uC
+    # ---------------------------------------------------------
     def set_coil_temperature(self, temperature: float):
         if hasattr(self, "coil_temp_widget"):
             self.coil_temp_widget.setTemperature(temperature)
-
-        # ---------------------------------------------------------
-    #   React to uC (master) via backend
-    # ---------------------------------------------------------
 
     def _apply_intensity_from_uc(self, val: int):
         """

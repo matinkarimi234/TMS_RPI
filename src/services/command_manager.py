@@ -28,14 +28,14 @@ class CommandManager(QObject):
         self.packet_ready.emit(bytes(cmd)) # Event with Args
 
     def build_stop_tms(self):
-        cmd = bytearray(TX_SIZE)
+        cmd = bytearray(UART_TX_SIZE)
         cmd[0] = 0x11
         self.packet_ready.emit(bytes(cmd)) # Event with Args
 
 
     def build_set_params(self, proto):
-        buffer = bytearray(TX_SIZE)
-        Clear_All_Buffers(buffer, TX_SIZE)
+        buffer = bytearray(UART_TX_SIZE)
+        Clear_All_Buffers(buffer, UART_TX_SIZE)
         buffer[0] = HEADER_A
         buffer[1] = HEADER_B
 
@@ -71,8 +71,8 @@ class CommandManager(QObject):
         buffer[17] = (proto.pulses_per_train & 0x00FF) >> 0
 
         
-        cs = Calculate_Checksum(buffer, TX_SIZE)
-        buffer[TX_SIZE - 1] = cs
+        cs = Calculate_Checksum(buffer, UART_TX_SIZE)
+        buffer[UART_TX_SIZE - 1] = cs
 
         self.packet_ready.emit(bytes(buffer))
 

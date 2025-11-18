@@ -1,7 +1,9 @@
+# hardware/gpio_controller.py
 from __future__ import annotations
 
 from typing import Callable, Dict, Optional
-from gpiozero import Device, Button
+
+from gpiozero import Device, Button, LED
 from gpiozero.pins.lgpio import LGPIOFactory
 
 
@@ -12,15 +14,23 @@ class GPIOController:
     - Supports edge args: both=, rising=, falling=, or edge='both'|'rising'|'falling'.
     - Respects bouncetime_ms (converted to seconds).
     - Avoids gpiozero's CallbackSetToNone warning by using a no-op.
+
+    Supports:
+    - Input pins via Button
+    - Output pins via LED
     """
 
     def __init__(self) -> None:
-        # pin -> Button
+        # pin -> Button (inputs)
         self._btn: Dict[int, Button] = {}
-        # pin -> configured pull-up state
+        # pin -> LED (outputs)
+        self._led: Dict[int, LED] = {}
+        # pin -> configured pull-up state for inputs
         self._pull_up: Dict[int, bool] = {}
 
-    # -------------------------- internals -------------------------------------
+    # ------------------------------------------------------------------
+    #   Internals
+    # ------------------------------------------------------------------
     @staticmethod
     def _noop() -> None:
         """No-op to clear handlers without warnings."""
@@ -39,6 +49,10 @@ class GPIOController:
         falling: Optional[bool],
         edge: Optional[str],
     ) -> str:
+        """
+        Decide which edge(s) to detect:
+        - "both", "rising", "falling"
+        """
         if edge:
             e = edge.lower()
             if e in ("both", "rising", "falling"):
@@ -51,25 +65,42 @@ class GPIOController:
             return "falling"
         return "both"
 
-    # ----------------------- setup / teardown ---------------------------------
+    # ------------------------------------------------------------------
+    #   Setup / Teardown
+    # ------------------------------------------------------------------
     def setmode_bcm(self) -> None:
         """
         gpiozero doesn't need a setmode; we use this to force the lgpio backend.
-        Call early (before setup_input).
+        Call early (before setup_input / setup_output).
         """
         Device.pin_factory = LGPIOFactory()
 
     def setup_input(self, pin: int, *, pull_up: bool = True) -> None:
-        # Re-create if it already exists (pull may change)
+        """
+        Configure an input pin.
+        """
         old = self._btn.get(pin)
         if old:
             try:
                 old.close()
             except Exception:
                 pass
+
         self._pull_up[pin] = pull_up
-        # Set bounce_time later per-callback
         self._btn[pin] = Button(pin, pull_up=pull_up)
+
+    def setup_output(self, pin: int) -> None:
+        """
+        Configure an output pin.
+        """
+        old = self._led.get(pin)
+        if old:
+            try:
+                old.close()
+            except Exception:
+                pass
+
+        self._led[pin] = LED(pin)
 
     def add_event_detect(
         self,
@@ -87,10 +118,12 @@ class GPIOController:
         The callback receives the pin number: callback(pin).
         """
         if pin not in self._btn:
+            # default pull_up=True if not explicitly set up
             self.setup_input(pin, pull_up=True)
 
         dev = self._btn[pin]
-        #dev.bounce_time = self._ms_to_seconds(bouncetime_ms)
+        # If you want hardware debounce via gpiozero:
+        # dev.bounce_time = self._ms_to_seconds(bouncetime_ms)
 
         # Safe wrapper: gpiozero passes no channel; we inject pin.
         def _cb() -> None:
@@ -100,10 +133,6 @@ class GPIOController:
                 # Keep exceptions from killing gpiozero's worker thread
                 pass
 
-        # Map requested edge(s) to gpiozero Button events,
-        # taking pull direction into account:
-        # pull_up=True:  falling -> when_pressed, rising -> when_released
-        # pull_up=False: rising  -> when_pressed, falling -> when_released
         pull_up = self._pull_up.get(pin, True)
         sel = self._resolve_edge(both, rising, falling, edge)
 
@@ -111,6 +140,10 @@ class GPIOController:
         dev.when_pressed = self._noop
         dev.when_released = self._noop
 
+        # Map requested edge(s) to gpiozero Button events,
+        # taking pull direction into account:
+        # pull_up=True:  falling -> when_pressed, rising -> when_released
+        # pull_up=False: rising  -> when_pressed, falling -> when_released
         if sel == "both":
             dev.when_pressed = _cb
             dev.when_released = _cb
@@ -136,6 +169,7 @@ class GPIOController:
             dev.when_released = self._noop
 
     def cleanup(self) -> None:
+        # Close input devices
         for dev in list(self._btn.values()):
             try:
                 dev.close()
@@ -144,7 +178,17 @@ class GPIOController:
         self._btn.clear()
         self._pull_up.clear()
 
-    # ------------------------------ I/O ---------------------------------------
+        # Close output devices
+        for led in list(self._led.values()):
+            try:
+                led.close()
+            except Exception:
+                pass
+        self._led.clear()
+
+    # ------------------------------------------------------------------
+    #   I/O
+    # ------------------------------------------------------------------
     def input(self, pin: int) -> int:
         """
         Return the raw electrical level (like RPi.GPIO.input):
@@ -154,13 +198,29 @@ class GPIOController:
         dev = self._btn.get(pin)
         if dev is None:
             raise RuntimeError(f"Pin {pin} not set up; call setup_input first.")
+
         pull_up = self._pull_up.get(pin, True)
         if pull_up:
             return 0 if dev.is_pressed else 1
         else:
             return 1 if dev.is_pressed else 0
 
-    # Expose constants for callers
+    def output(self, pin: int, value: int) -> None:
+        """
+        Set a digital output (like RPi.GPIO.output).
+        """
+        led = self._led.get(pin)
+        if led is None:
+            raise RuntimeError(f"Pin {pin} not set up as output; call setup_output first.")
+
+        if value == self.LOW:
+            led.off()
+        else:
+            led.on()
+
+    # ------------------------------------------------------------------
+    #   Constants
+    # ------------------------------------------------------------------
     @property
     def LOW(self) -> int:
         return 0
