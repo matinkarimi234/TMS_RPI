@@ -86,7 +86,7 @@ class ParamsPage(QWidget):
         self.btn_toggle_theme = QPushButton("Toggle Theme")
         self.btn_toggle_theme.clicked.connect(self._toggle_theme)
 
-        # Session control widget (Start/Pause/Resume, Stop)
+        # Session control widget (Pause, Start/Stop as frames)
         self.session_controls = SessionControlWidget(self)
 
         # LEFT: Select Protocol
@@ -144,9 +144,8 @@ class ParamsPage(QWidget):
 
         # UI -> backend
         self.session_controls.startRequested.connect(self._on_session_start_requested)
-        self.session_controls.resumeRequested.connect(self._on_session_start_requested)
-        self.session_controls.pauseRequested.connect(self._on_session_pause_requested)
         self.session_controls.stopRequested.connect(self._on_session_stop_requested)
+        self.session_controls.pauseRequested.connect(self._on_session_start_requested)
 
     # ---------------------------------------------------------
     #   Protocol binding
@@ -280,7 +279,7 @@ class ParamsPage(QWidget):
         self.gpio_backend.arrowDownPressed.connect(self._on_nav_down)
 
         # Session control from hardware buttons
-        self.gpio_backend.startPausePressed.connect(self._on_hardware_control_pressed)
+        self.gpio_backend.startPausePressed.connect(self._on_session_start_requested)
         self.gpio_backend.stopPressed.connect(self._on_session_stop_requested)
         self.gpio_backend.protocolPressed.connect(self._on_protocols_list_requested)
 
@@ -300,64 +299,34 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ---------------------------------------------------------
     def _on_session_start_requested(self):
-        """Handle start and resume requests"""
-        current_state = self.session_controls.get_state()
-        
-        if current_state in ["stopped", "paused"]:
-            self._start_session()
+        if self.session_controls.get_state() == "pause":
+            if hasattr(self.pulse_widget, "start"):
+                self.pulse_widget.start()
+            self.session_controls.set_state(running=True, paused=False)
 
-    def _on_session_pause_requested(self):
-        """Handle pause request"""
-        current_state = self.session_controls.get_state()
-        if current_state == "running":
-            self._pause_session()
+            if self.backend:
+                if self.current_protocol:
+                    intensity = int(self.current_protocol.intensity_percent_of_mt_init)
+                else:
+                    intensity = int(self.intensity_gauge.value())
+                self.backend.start_session(intensity)
+        else:
+            if hasattr(self.pulse_widget, "pause"):
+                self.pulse_widget.pause()
+            self.session_controls.set_state(running=False, paused=True)
 
     def _on_session_stop_requested(self):
-        """Handle stop request"""
-        self._stop_session()
-
-    def _on_hardware_control_pressed(self):
-        """Handle hardware start/pause button - simulates control button click"""
-        current_state = self.session_controls.get_state()
-        
-        if current_state == "stopped" or current_state == "paused":
-            self._on_session_start_requested()
-        elif current_state == "running":
-            self._on_session_pause_requested()
-
-    def _start_session(self):
-        """Start or resume the TMS session"""
-        if hasattr(self.pulse_widget, "start"):
-            self.pulse_widget.start()
-        
-        # Update session control widget state
-        self.session_controls.set_state(running=True, paused=False)
-
-        if self.backend:
-            if self.current_protocol:
-                intensity = int(self.current_protocol.intensity_percent_of_mt_init)
-            else:
-                intensity = int(self.intensity_gauge.value())
-            self.backend.start_session(intensity)
-
-    def _pause_session(self):
-        """Pause the TMS session"""
-        if hasattr(self.pulse_widget, "pause"):
-            self.pulse_widget.pause()
-        
-        # Update session control widget state
-        self.session_controls.set_state(running=True, paused=True)
-
-    def _stop_session(self):
-        """Stop the TMS session"""
         if hasattr(self.pulse_widget, "stop"):
             self.pulse_widget.stop()
-        
-        # Update session control widget state
         self.session_controls.set_state(running=False, paused=False)
 
         if self.backend:
             self.backend.stop_session()
+
+    def _on_session_pause_requested(self):
+        if hasattr(self.pulse_widget, "pause"):
+            self.pulse_widget.pause()
+        self.session_controls.set_state(running=False, paused=True)
 
     def _on_protocols_list_requested(self):
         self.request_protocol_list.emit()
