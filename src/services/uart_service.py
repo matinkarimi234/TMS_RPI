@@ -1,5 +1,6 @@
 from PySide6.QtCore import QObject, Signal
 
+
 class UARTService(QObject):
     telemetry_updated = Signal(bytes)
     error = Signal(str)

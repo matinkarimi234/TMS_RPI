@@ -2,6 +2,7 @@ from PySide6.QtCore import QObject, Signal
 import serial, threading, time
 from config.settings import HEADER_A, HEADER_B
 
+
 class UARTManager(QObject):
     data_received = Signal(bytes)
     error = Signal(str)
@@ -20,7 +21,7 @@ class UARTManager(QObject):
         # how many bytes must be waiting before we attempt a read
         self._rx_trigger_bytes = max(1, int(rx_trigger_bytes))
 
-        # fixed frame length (protocol uses 16 bytes with last as checksum)
+        # fixed frame length (your protocol’s RX length)
         self._frame_len = 16
 
     # -------- live-tunable property ------------------------------------------
@@ -44,7 +45,6 @@ class UARTManager(QObject):
         if self._ser and self._ser.is_open:
             return
         try:
-            # supports real ports (e.g., "/dev/serial0") and virtual "loop://"
             self._ser = serial.Serial(
                 self.port,
                 baudrate=self.baudrate,
@@ -85,9 +85,7 @@ class UARTManager(QObject):
         bad = 0
         while not self._stop.is_set():
             try:
-                # Use configurable trigger
                 if self._ser.in_waiting >= self._rx_trigger_bytes:
-                    # Read a full frame so RxManager keeps working
                     pkt = self._ser.read(self._frame_len)
                     if self._checksum_header(pkt):
                         self.data_received.emit(pkt)
@@ -108,13 +106,15 @@ class UARTManager(QObject):
                 time.sleep(1)
 
     def _checksum_header(self, pkt: bytes) -> bool:
+        if len(pkt) != self._frame_len:
+            return False
         if pkt[0] != HEADER_A:
             self.error.emit(f"Header1: {pkt[0]}")
             return False
         if pkt[1] != HEADER_B:
             self.error.emit(f"Header2: {pkt[1]}")
             return False
-        return len(pkt) == self._frame_len and (sum(pkt[: self._frame_len - 1]) & 0xFF) == pkt[self._frame_len - 1]
+        return (sum(pkt[: self._frame_len - 1]) & 0xFF) == pkt[self._frame_len - 1]
 
     def _reset(self):
         if self._ser:

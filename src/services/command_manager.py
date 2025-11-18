@@ -1,97 +1,149 @@
 from PySide6.QtCore import QObject, Signal
-from config.settings import HEADER_A, HEADER_B, UART_TX_SIZE, START_STIMULATION, STOP_STIMULATION, PAUSE_STIMULATION
+from config.settings import (
+    HEADER_A,
+    HEADER_B,
+    UART_TX_SIZE,
+    START_STIMULATION,
+    STOP_STIMULATION,
+    PAUSE_STIMULATION,
+)
 
-def Clear_All_Buffers(buf : bytearray , length : int) -> bytearray:
-    for i in range(0, length):
+
+def Clear_All_Buffers(buf: bytearray, length: int) -> bytearray:
+    for i in range(length):
         buf[i] = 0x00
     return buf
 
-def Calculate_Checksum(buf: bytearray , length:int) -> int:
-    sum = 0
-    for i in range(0,length - 1):
-        sum += buf[i]
-    
-    return int(sum % 256)
+
+def Calculate_Checksum(buf: bytearray, length: int) -> int:
+    s = 0
+    for i in range(length - 1):
+        s += buf[i]
+    return int(s % 256)
+
 
 class CommandManager(QObject):
+    """
+    Builds all UART frames for the protocol:
+
+    - start/stop/pause stimulation commands
+    - set-params frame from a TMSProtocol
+    """
+
     packet_ready = Signal(bytes)
 
     def __init__(self):
         super().__init__()
 
-    def start_stimulation_command(self):
+    # ------------------------------------------------------------------
+    #   Commands
+    # ------------------------------------------------------------------
+    def start_stimulation_command(self) -> bytes:
         buff = bytearray(UART_TX_SIZE)
+        Clear_All_Buffers(buff, UART_TX_SIZE)
+
         buff[0] = HEADER_A
         buff[1] = HEADER_B
-
         buff[2] = START_STIMULATION
 
         cs = Calculate_Checksum(buff, UART_TX_SIZE)
         buff[UART_TX_SIZE - 1] = cs
 
-        self.packet_ready.emit(bytes(buff)) # Event with Args
+        frame = bytes(buff)
+        self.packet_ready.emit(frame)
+        return frame
 
-    def stop_stimulation_command(self):
+    def stop_stimulation_command(self) -> bytes:
         buff = bytearray(UART_TX_SIZE)
+        Clear_All_Buffers(buff, UART_TX_SIZE)
+
         buff[0] = HEADER_A
         buff[1] = HEADER_B
-
         buff[2] = STOP_STIMULATION
 
         cs = Calculate_Checksum(buff, UART_TX_SIZE)
         buff[UART_TX_SIZE - 1] = cs
 
-    def pause_stimulation_command(self):
+        frame = bytes(buff)
+        self.packet_ready.emit(frame)
+        return frame
+
+    def pause_stimulation_command(self) -> bytes:
         buff = bytearray(UART_TX_SIZE)
+        Clear_All_Buffers(buff, UART_TX_SIZE)
+
         buff[0] = HEADER_A
         buff[1] = HEADER_B
-
         buff[2] = PAUSE_STIMULATION
 
         cs = Calculate_Checksum(buff, UART_TX_SIZE)
         buff[UART_TX_SIZE - 1] = cs
 
-    def build_set_params(self, proto):
+        frame = bytes(buff)
+        self.packet_ready.emit(frame)
+        return frame
+
+    # ------------------------------------------------------------------
+    #   Set-params frame
+    # ------------------------------------------------------------------
+    def build_set_params(self, proto) -> bytes:
+        """
+        Build a 'Set Params' frame from the current TMSProtocol object.
+
+        NOTE: uses current properties (not *_init)
+        """
         buffer = bytearray(UART_TX_SIZE)
         Clear_All_Buffers(buffer, UART_TX_SIZE)
+
         buffer[0] = HEADER_A
         buffer[1] = HEADER_B
+        buffer[2] = 0x01  # Set Params command code
 
-        buffer[2] = 0x01 #Set Params
+        # Burst pulses
+        buffer[3] = int(getattr(proto, "burst_pulses_count", 0)) & 0xFF
 
-        buffer[3] = proto.burst_pulses_count_init
+        # Intensity in your chosen encoding
+        # here we keep your original logic: absolute intensity * 10
+        abs_intensity = int(proto.get_absolute_intensity() * 10)  # e.g. 75.0% -> 750
+        buffer[4] = (abs_intensity & 0xFF00) >> 8
+        buffer[5] = (abs_intensity & 0x00FF) >> 0
 
-        intensity = int(proto.get_absolute_intensity() * 10)
-        buffer[4] = (intensity & 0xFF00) >> 8
-        buffer[5] = (intensity & 0x00FF) >> 0
+        # Frequency * 10 (e.g. 10.0 Hz -> 100)
+        freq10 = int(float(getattr(proto, "frequency_hz", 0.0)) * 10.0)
+        buffer[6] = (freq10 & 0xFF00) >> 8
+        buffer[7] = (freq10 & 0x00FF) >> 0
 
-        freq = int(proto.frequency_hz_init * 10)
-        buffer[6] = (freq & 0xFF00) >> 8
-        buffer[7] = (freq & 0x00FF) >> 0
-
-        iti = int(proto.inter_train_interval_s)
+        # Inter-train interval (integer seconds)
+        iti = int(getattr(proto, "inter_train_interval_s", 0.0))
         buffer[8] = (iti & 0xFF00) >> 8
         buffer[9] = (iti & 0x00FF) >> 0
 
-        ipi = int(proto.inter_pulse_interval_ms_init)
+        # Inter-pulse interval in ms
+        ipi = int(float(getattr(proto, "inter_pulse_interval_ms", 0.0)))
         buffer[10] = (ipi & 0xFF00) >> 8
         buffer[11] = (ipi & 0x00FF) >> 0
 
-        ramp_frac = int(proto.ramp_fraction * 10)
-        buffer[12] = ramp_frac
+        # Ramp fraction * 10 (0.7–1.0 -> 7–10)
+        ramp_frac10 = int(float(getattr(proto, "ramp_fraction", 1.0)) * 10.0)
+        buffer[12] = ramp_frac10 & 0xFF
 
-        buffer[13] = proto.ramp_steps
+        # Ramp steps (1–10)
+        buffer[13] = int(getattr(proto, "ramp_steps", 1)) & 0xFF
 
-        buffer[14] = (proto.train_count & 0xFF00) >> 8
-        buffer[15] = (proto.train_count & 0x00FF) >> 0
-        
-        buffer[16] = (proto.pulses_per_train & 0xFF00) >> 8
-        buffer[17] = (proto.pulses_per_train & 0x00FF) >> 0
+        # Train count
+        train_count = int(getattr(proto, "train_count", 0))
+        buffer[14] = (train_count & 0xFF00) >> 8
+        buffer[15] = (train_count & 0x00FF) >> 0
 
-        
+        # Pulses per train
+        ppt = int(getattr(proto, "pulses_per_train", 0))
+        buffer[16] = (ppt & 0xFF00) >> 8
+        buffer[17] = (ppt & 0x00FF) >> 0
+
+        # checksum
         cs = Calculate_Checksum(buffer, UART_TX_SIZE)
         buffer[UART_TX_SIZE - 1] = cs
 
-        self.packet_ready.emit(bytes(buffer))
-
-
+        frame = bytes(buffer)
+        self.packet_ready.emit(frame)
+        return frame

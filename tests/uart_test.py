@@ -123,7 +123,6 @@ class UARTTestApp(QWidget):
         self.uart_s.telemetry_updated.connect(self._on_rx_raw)
 
         # decoded telemetry
-        self.rx_m.tms_status.connect(self._on_status)
         self.rx_m.intensity_reading.connect(self._on_intensity)
 
         # commands (15B -> add checksum -> send)
@@ -132,8 +131,8 @@ class UARTTestApp(QWidget):
         # buttons
         self.btn_open.clicked.connect(self._open_clicked)
         self.btn_close.clicked.connect(self.uart_s.close)
-        self.btn_start.clicked.connect(partial(self.cmd_m.build_start_tms, self.intensity_spin.value(), 200))
-        self.btn_stop.clicked.connect(self.cmd_m.build_stop_tms)
+        self.btn_start.clicked.connect(partial(self.cmd_m.start_stimulation_command, self.intensity_spin.value(), 200))
+        self.btn_stop.clicked.connect(self.cmd_m.stop_stimulation_command)
         self.btn_send_telemetry.clicked.connect(self._send_one_telemetry)
         self.btn_send_bad.clicked.connect(self._send_bad)
         self.chk_auto.toggled.connect(self._toggle_auto)
@@ -164,7 +163,6 @@ class UARTTestApp(QWidget):
         self.uart_s.telemetry_updated.connect(self._on_rx_raw)
 
         self.rx_m = RxManager(self.uart_s)
-        self.rx_m.tms_status.connect(self._on_status)
         self.rx_m.intensity_reading.connect(self._on_intensity)
 
         try:
