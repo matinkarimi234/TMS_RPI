@@ -45,7 +45,7 @@ class UARTManager(QObject):
             return
         try:
             # supports real ports (e.g., "/dev/serial0") and virtual "loop://"
-            self._ser = serial.serial_for_url(
+            self._ser = serial.Serial(
                 self.port,
                 baudrate=self.baudrate,
                 timeout=self.timeout,
@@ -109,8 +109,10 @@ class UARTManager(QObject):
 
     def _checksum_header(self, pkt: bytes) -> bool:
         if pkt[0] != HEADER_A:
+            self.error.emit(f"Header1: {pkt[0]}")
             return False
         if pkt[1] != HEADER_B:
+            self.error.emit(f"Header2: {pkt[1]}")
             return False
         return len(pkt) == self._frame_len and (sum(pkt[: self._frame_len - 1]) & 0xFF) == pkt[self._frame_len - 1]
 
