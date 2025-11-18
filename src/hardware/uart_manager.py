@@ -1,6 +1,6 @@
 from PySide6.QtCore import QObject, Signal
 import serial, threading, time
-
+from config.settings import HEADER_A, HEADER_B
 
 class UARTManager(QObject):
     data_received = Signal(bytes)
@@ -89,12 +89,12 @@ class UARTManager(QObject):
                 if self._ser.in_waiting >= self._rx_trigger_bytes:
                     # Read a full frame so RxManager keeps working
                     pkt = self._ser.read(self._frame_len)
-                    if self._checksum(pkt):
+                    if self._checksum_header(pkt):
                         self.data_received.emit(pkt)
                         bad = 0
                     else:
                         bad += 1
-                        self.error.emit("Checksum error")
+                        self.error.emit("Checksum/Header error")
                 else:
                     time.sleep(0.01)
 
@@ -107,7 +107,11 @@ class UARTManager(QObject):
                 self.error.emit(f"UART thread exception: {e}")
                 time.sleep(1)
 
-    def _checksum(self, pkt: bytes) -> bool:
+    def _checksum_header(self, pkt: bytes) -> bool:
+        if pkt[0] != HEADER_A:
+            return False
+        if pkt[1] != HEADER_B:
+            return False
         return len(pkt) == self._frame_len and (sum(pkt[: self._frame_len - 1]) & 0xFF) == pkt[self._frame_len - 1]
 
     def _reset(self):

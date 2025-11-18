@@ -1,7 +1,12 @@
 from PySide6.QtCore import QObject, Signal
 
 class RxManager(QObject):
-    tms_status = Signal(bool)
+    tms_state = Signal(int)
+
+    coil_temperature_reading = Signal(float)
+    igbt_temperature_reading = Signal(float)
+    resistor_temperature_reading = Signal(float)
+
     intensity_reading = Signal(int)
 
     def __init__(self, uart_service):
@@ -9,7 +14,26 @@ class RxManager(QObject):
         uart_service.telemetry_updated.connect(self._on_packet)
 
     def _on_packet(self, packet: bytes):
-        status = (packet[0] == 0x01)
-        intensity = (packet[1] << 8) | packet[2]
-        self.tms_status.emit(status) # Event with Args
-        self.intensity_reading.emit(intensity) # Event with Args
+        # State : IDLE, Single, Start, Run Stimulation, Pause, Stop, Error
+        uC_state = int(packet[2])
+
+        # Intensity or MT can change by this encoder BigIndian
+        intensity_Enc = (packet[3] << 8) + (packet[4] << 0)
+
+        # Reading Temperatures e.g. 23.1
+        coil_temp_i16 = (packet[5] << 8) + (packet[6] << 0)
+        coil_Temperature = round(float(0.1 * coil_temp_i16), 1)
+
+        igbt_temp_i16 = (packet[7] << 8) + (packet[8] << 0)
+        igbt_Temperature = round(float(0.1 * igbt_temp_i16), 1)
+
+        resistor_temp_i16 = (packet[9] << 8) + (packet[10] << 0)
+        resistor_Temperature = round(float(0.1 * resistor_temp_i16), 1)
+
+
+        self.tms_state.emit(uC_state)
+        self.intensity_reading.emit(intensity_Enc) # Event with Args
+
+        self.coil_temperature_reading.emit(coil_Temperature)
+        self.igbt_temperature_reading.emit(igbt_Temperature)
+        self.resistor_temperature_reading.emit(resistor_Temperature)

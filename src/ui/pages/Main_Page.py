@@ -10,6 +10,9 @@ from ui.widgets.pulse_bars_widget import PulseBarsWidget
 from ui.widgets.intensity_gauge import IntensityGauge
 from ui.widgets.temperature_widget import CoilTemperatureWidget
 from ui.widgets.session_control_widget import SessionControlWidget
+from services.uart_backend import Uart_Backend
+
+from config.settings import WARNING_TEMPERATURE_THRESHOLD, DANGER_TEMPERATURE_THRESHOLD
 
 
 class ParamsPage(QWidget):
@@ -31,6 +34,7 @@ class ParamsPage(QWidget):
         self.theme_manager = theme_manager
         self.current_theme = initial_theme
         self.current_protocol: Optional[TMSProtocol] = None
+        self.backend: Optional[Uart_Backend] = None
         self.gpio_service = gpio_service
 
         # --- Header labels ---
@@ -116,8 +120,8 @@ class ParamsPage(QWidget):
 
         # --- Coil temperature widget ---
         self.coil_temp_widget = CoilTemperatureWidget(
-            warning_threshold=30,
-            danger_threshold=40
+            warning_threshold=WARNING_TEMPERATURE_THRESHOLD,
+            danger_threshold=DANGER_TEMPERATURE_THRESHOLD
         )
         # maintain an aspect ratio of 1.4:1 while resizing
         self.coil_temp_widget.setMaximumWidth(int(self.coil_temp_widget.height() * 1.4))
@@ -142,11 +146,20 @@ class ParamsPage(QWidget):
         self._apply_theme_to_app(self.current_theme)
         self._connect_gpio()
 
-        # ---- connect session controls to pulse widget ----
+    def bind_backend(self, backend: Uart_Backend):
+        """
+        Called from MainWindow. Hook UI signals to backend signals/slots.
+        """
+        self.backend = backend
+
+        # UC -> UI
+        backend.intensityFromUc.connect(self._apply_intensity_from_uc)
+        backend.coilTempFromUc.connect(self.set_coil_temperature)
+
+        # UI -> backend
         self.session_controls.startRequested.connect(self._on_session_start_requested)
         self.session_controls.stopRequested.connect(self._on_session_stop_requested)
         self.session_controls.pauseRequested.connect(self._on_session_pause_requested)
-
     # ---------------------------------------------------------
     #   Protocol binding
     # ---------------------------------------------------------
@@ -306,26 +319,35 @@ class ParamsPage(QWidget):
 
 
     # ---------------------------------------------------------
-    #   Session control handlers
+    #   Session control handlers (UI <-> backend)
     # ---------------------------------------------------------
     def _on_session_start_requested(self):
-        # start or resume the session
+        # visual start
         if hasattr(self.pulse_widget, "start"):
             self.pulse_widget.start()
-        # assume running, not paused
         self.session_controls.set_state(running=True, paused=False)
+
+        # tell backend (which will build/send command)
+        if self.backend:
+            if self.current_protocol:
+                intensity = int(self.current_protocol.intensity_percent_of_mt_init)
+            else:
+                intensity = int(self.intensity_gauge.value())
+            self.backend.start_session(intensity)
 
     def _on_session_stop_requested(self):
         if hasattr(self.pulse_widget, "stop"):
             self.pulse_widget.stop()
-        # reset to idle
         self.session_controls.set_state(running=False, paused=False)
+
+        if self.backend:
+            self.backend.stop_session()
 
     def _on_session_pause_requested(self):
         if hasattr(self.pulse_widget, "pause"):
             self.pulse_widget.pause()
-        # mark as paused (not running)
         self.session_controls.set_state(running=False, paused=True)
+        # You can add a backend.pause_session() later if needed
 
     # ---------------------------------------------------------
     #   Theme support
@@ -359,6 +381,24 @@ class ParamsPage(QWidget):
     def set_coil_temperature(self, temperature: float):
         if hasattr(self, "coil_temp_widget"):
             self.coil_temp_widget.setTemperature(temperature)
+
+        # ---------------------------------------------------------
+    #   React to uC (master) via backend
+    # ---------------------------------------------------------
+
+    def _apply_intensity_from_uc(self, val: int):
+        """
+        uC sends intensity; gauge & protocol follow it.
+        """
+        v = max(0, min(65535, int(val)))
+        v = (v * 100) / 65535
+        try:
+            self.intensity_gauge.setValue(v)
+        except Exception:
+            pass
+        if self.current_protocol:
+            self.current_protocol.intensity_percent_of_mt_init = float(v)
+            self._sync_ui_from_protocol()
 
 
 __all__ = ["ParamsPage"]

@@ -145,6 +145,8 @@ class TMSProtocol:
             return True
         val = (self._inter_pulse_interval_ms * (self._burst_pulses_count - 1)) * self._frequency_hz / 1000.0
         return val <= 1.0 + 1e-12
+    def get_absolute_intensity(self) -> float:
+        return (self._subject_mt_percent * self._intensity_percent_of_mt) / 100
 
     # -----------------------------------------------------------------
     # Properties
