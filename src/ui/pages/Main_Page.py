@@ -168,6 +168,9 @@ class ParamsPage(QWidget):
         except Exception:
             pass
 
+        if self.backend is not None:
+            self.backend.request_param_update(proto)
+
     # ---------------------------------------------------------
     #   UI Sync / ranges / modifiers
     # ---------------------------------------------------------
@@ -311,6 +314,9 @@ class ParamsPage(QWidget):
 
         self._sync_ui_from_protocol()
 
+        if self.backend is not None and self.current_protocol is not None:
+            self.backend.request_param_update(self.current_protocol)
+
     # ---------------------------------------------------------
     #   GPIO backend integration
     # ---------------------------------------------------------
@@ -400,8 +406,11 @@ class ParamsPage(QWidget):
 
     def _on_intensity_changed(self, v: int):
         if self.current_protocol:
-            self.current_protocol.intensity_percent_of_mt_init = float(v)
+            self.current_protocol.intensity_percent_of_mt_init = int(v)
             self._sync_ui_from_protocol()
+
+            if self.backend is not None:
+                self.backend.request_param_update(self.current_protocol)
 
     def _toggle_theme(self):
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
