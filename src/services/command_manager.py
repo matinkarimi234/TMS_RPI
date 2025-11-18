@@ -1,5 +1,5 @@
 from PySide6.QtCore import QObject, Signal
-from config.settings import HEADER_A, HEADER_B, UART_TX_SIZE
+from config.settings import HEADER_A, HEADER_B, UART_TX_SIZE, START_STIMULATION, STOP_STIMULATION, PAUSE_STIMULATION
 
 def Clear_All_Buffers(buf : bytearray , length : int) -> bytearray:
     for i in range(0, length):
@@ -19,19 +19,37 @@ class CommandManager(QObject):
     def __init__(self):
         super().__init__()
 
-    def build_start_tms(self, intensity: int, duration_ms: int):
-        cmd = bytearray(UART_TX_SIZE)
-        cmd[0] = 0x10
-        cmd[1] = intensity & 0xFF
-        cmd[2] = (duration_ms >> 8) & 0xFF
-        cmd[3] = duration_ms & 0xFF
-        self.packet_ready.emit(bytes(cmd)) # Event with Args
+    def start_stimulation_command(self):
+        buff = bytearray(UART_TX_SIZE)
+        buff[0] = HEADER_A
+        buff[1] = HEADER_B
 
-    def build_stop_tms(self):
-        cmd = bytearray(UART_TX_SIZE)
-        cmd[0] = 0x11
-        self.packet_ready.emit(bytes(cmd)) # Event with Args
+        buff[2] = START_STIMULATION
 
+        cs = Calculate_Checksum(buff, UART_TX_SIZE)
+        buff[UART_TX_SIZE - 1] = cs
+
+        self.packet_ready.emit(bytes(buff)) # Event with Args
+
+    def stop_stimulation_command(self):
+        buff = bytearray(UART_TX_SIZE)
+        buff[0] = HEADER_A
+        buff[1] = HEADER_B
+
+        buff[2] = STOP_STIMULATION
+
+        cs = Calculate_Checksum(buff, UART_TX_SIZE)
+        buff[UART_TX_SIZE - 1] = cs
+
+    def pause_stimulation_command(self):
+        buff = bytearray(UART_TX_SIZE)
+        buff[0] = HEADER_A
+        buff[1] = HEADER_B
+
+        buff[2] = PAUSE_STIMULATION
+
+        cs = Calculate_Checksum(buff, UART_TX_SIZE)
+        buff[UART_TX_SIZE - 1] = cs
 
     def build_set_params(self, proto):
         buffer = bytearray(UART_TX_SIZE)

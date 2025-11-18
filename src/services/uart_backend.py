@@ -125,17 +125,21 @@ class Uart_Backend(QObject):
         self._pending_proto = None
 
     @Slot(int)
-    def start_session(self, intensity: int):
+    def start_session(self):
         """
         UI requests session start. We don't build frames here;
         we just delegate to CommandManager.
         """
         # Example: same as your test app
-        self.cmd_m.build_start_tms(intensity, 200)
+        self.cmd_m.start_stimulation_command()
 
     @Slot()
     def stop_session(self):
-        self.cmd_m.build_stop_tms()
+        self.cmd_m.stop_stimulation_command()\
+        
+    @Slot()
+    def pause_session(self):
+        self.cmd_m.pause_stimulation_command()
 
     @Slot(object)
     def apply_protocol(self, proto):

@@ -305,15 +305,14 @@ class ParamsPage(QWidget):
             self.session_controls.set_state(running=True, paused=False)
 
             if self.backend:
-                if self.current_protocol:
-                    intensity = int(self.current_protocol.intensity_percent_of_mt_init)
-                else:
-                    intensity = int(self.intensity_gauge.value())
-                self.backend.start_session(intensity)
+                self.backend.start_session()
         elif self.session_controls.get_state() == "Pause":
             if hasattr(self.pulse_widget, "pause"):
                 self.pulse_widget.pause()
             self.session_controls.set_state(running=False, paused=True)
+
+            if self.backend:
+                self.backend.pause_session()
 
     def _on_session_stop_requested(self):
         if hasattr(self.pulse_widget, "stop"):
