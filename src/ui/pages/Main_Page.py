@@ -81,7 +81,7 @@ class ParamsPage(QWidget):
         hbox_bottom.setContentsMargins(10, 0, 10, 0)
 
         self.btn_select_protocol = QPushButton("Select Protocol")
-        self.btn_select_protocol.clicked.connect(self.request_protocol_list.emit)
+        self.btn_select_protocol.clicked.connect(self._on_protocols_list_requested)
 
         self.btn_toggle_theme = QPushButton("Toggle Theme")
         self.btn_toggle_theme.clicked.connect(self._toggle_theme)
@@ -281,6 +281,7 @@ class ParamsPage(QWidget):
         # Session control from hardware buttons
         self.gpio_backend.startPausePressed.connect(self._on_session_start_requested)
         self.gpio_backend.stopPressed.connect(self._on_session_stop_requested)
+        self.gpio_backend.protocolPressed.connect(self._on_protocols_list_requested)
 
         # RESERVED button -> toggle theme
         self.gpio_backend.reservedPressed.connect(self._toggle_theme)
@@ -298,16 +299,21 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ---------------------------------------------------------
     def _on_session_start_requested(self):
-        if hasattr(self.pulse_widget, "start"):
-            self.pulse_widget.start()
-        self.session_controls.set_state(running=True, paused=False)
+        if self.session_controls.get_state() == "start":
+            if hasattr(self.pulse_widget, "start"):
+                self.pulse_widget.start()
+            self.session_controls.set_state(running=True, paused=False)
 
-        if self.backend:
-            if self.current_protocol:
-                intensity = int(self.current_protocol.intensity_percent_of_mt_init)
-            else:
-                intensity = int(self.intensity_gauge.value())
-            self.backend.start_session(intensity)
+            if self.backend:
+                if self.current_protocol:
+                    intensity = int(self.current_protocol.intensity_percent_of_mt_init)
+                else:
+                    intensity = int(self.intensity_gauge.value())
+                self.backend.start_session(intensity)
+        elif "pause":
+            if hasattr(self.pulse_widget, "pause"):
+                self.pulse_widget.pause()
+            self.session_controls.set_state(running=False, paused=True)
 
     def _on_session_stop_requested(self):
         if hasattr(self.pulse_widget, "stop"):
@@ -321,6 +327,9 @@ class ParamsPage(QWidget):
         if hasattr(self.pulse_widget, "pause"):
             self.pulse_widget.pause()
         self.session_controls.set_state(running=False, paused=True)
+
+    def _on_protocols_list_requested(self):
+        self.request_protocol_list.emit
 
     # ---------------------------------------------------------
     #   Theme support

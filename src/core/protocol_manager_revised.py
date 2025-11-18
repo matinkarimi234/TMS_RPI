@@ -119,7 +119,7 @@ class TMSProtocol:
         burst_len_ms = self._inter_pulse_interval_ms * (self._burst_pulses_count)
         if burst_len_ms <= 0:
             return self.FREQ_MIN
-        max_freq = 1000.0 / burst_len_ms
+        max_freq = round(1000.0 / burst_len_ms, 1)
         return clamp(max_freq, self.FREQ_MIN, self.FREQ_MAX)
 
     def _calculate_min_frequency_hz(self) -> float:

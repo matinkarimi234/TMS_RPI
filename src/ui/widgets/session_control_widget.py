@@ -92,6 +92,9 @@ class SessionControlWidget(QWidget):
             # when not running, treat as 'Start' even if paused flag is True
             self.start_stop_frame.setText("Start")
 
+    def get_state(self):
+        return self.start_stop_frame.text()
+
         # You can also change style based on paused/running using stylesheets.
 
     # ----- internal slots -----
