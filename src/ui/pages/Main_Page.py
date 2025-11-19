@@ -9,7 +9,7 @@ from app.theme_manager import ThemeManager
 from core.protocol_manager_revised import TMSProtocol
 from ui.widgets.navigation_list_widget import NavigationListWidget
 from ui.widgets.pulse_bars_widget import PulseBarsWidget
-from ui.widgets.intensity_gauge import IntensityGauge
+from ui.widgets.intensity_gauge import IntensityGauge, GaugeMode
 from ui.widgets.temperature_widget import CoilTemperatureWidget
 from ui.widgets.session_control_widget import SessionControlWidget
 from services.uart_backend import Uart_Backend
@@ -49,6 +49,11 @@ class ParamsPage(QWidget):
 
         self.pulse_widget = PulseBarsWidget(self)
         self.list_widget = NavigationListWidget()
+
+        # when pulses/time change, update remaining gauge
+        self.pulse_widget.sessionRemainingChanged.connect(
+            self._update_remaining_gauge
+        )
 
         # --- Parameter list setup ---
         self.param_definitions = [
@@ -156,6 +161,7 @@ class ParamsPage(QWidget):
     def set_protocol(self, proto: TMSProtocol):
         self.current_protocol = proto
 
+        self.intensity_gauge.setMode(GaugeMode.INTENSITY)
         self.intensity_gauge.setFromProtocol(proto)
         self.pulse_widget.set_protocol(proto)
         self._sync_ui_from_protocol()
@@ -172,12 +178,47 @@ class ParamsPage(QWidget):
             self.backend.request_param_update(proto)
 
     # ---------------------------------------------------------
+    #   Gauge mode helpers
+    # ---------------------------------------------------------
+    def _enter_remaining_mode(self):
+        try:
+            self.intensity_gauge.setMode(GaugeMode.REMAINING)
+        except Exception:
+            pass
+
+    def _exit_remaining_mode(self):
+        try:
+            self.intensity_gauge.setMode(GaugeMode.INTENSITY)
+            if self.current_protocol:
+                self.intensity_gauge.setFromProtocol(self.current_protocol)
+        except Exception:
+            pass
+
+    def _update_remaining_gauge(
+        self,
+        remaining_pulses: int,
+        total_pulses: int,
+        remaining_seconds: float,
+        total_seconds: float,
+    ):
+        """
+        Called from PulseBarsWidget each tick while session is running.
+        """
+        try:
+            self.intensity_gauge.setMode(GaugeMode.REMAINING)
+            self.intensity_gauge.setRemainingState(
+                remaining_pulses=remaining_pulses,
+                total_pulses=total_pulses,
+                remaining_seconds=remaining_seconds,
+                total_seconds=total_seconds,
+            )
+        except Exception:
+            pass
+
+    # ---------------------------------------------------------
     #   UI Sync / ranges / modifiers
     # ---------------------------------------------------------
     def _get_param_range_for_key(self, proto: TMSProtocol, key: str):
-        """
-        Per-parameter range; used for correct suffix display AND clamping.
-        """
         if key == "frequency_hz":
             return proto.FREQ_MIN, proto._calculate_max_frequency_hz()
         elif key == "inter_pulse_interval_ms":
@@ -198,10 +239,6 @@ class ParamsPage(QWidget):
             return 0, 1
 
     def _get_param_range(self, proto: TMSProtocol):
-        """
-        Backwards compatible: range for the currently selected item.
-        Only used where 'current row' semantics are needed.
-        """
         item = self.list_widget.currentItem()
         if not item:
             return 0, 1
@@ -214,8 +251,16 @@ class ParamsPage(QWidget):
     def _sync_ui_from_protocol(self):
         if not self.current_protocol:
             return
+
         proto = self.current_protocol
         self.pulse_widget.set_protocol(proto)
+
+        # enforce single-burst rule
+        try:
+            if int(getattr(proto, "burst_pulses_count", 0)) == 1:
+                proto.inter_pulse_interval_ms = self.IPI_FOR_SINGLE_BURST_MS
+        except Exception:
+            pass
 
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
@@ -232,20 +277,24 @@ class ParamsPage(QWidget):
                 continue
 
             lo, hi = self._get_param_range_for_key(proto, key)
-            row_widget.set_value(val)
 
-            if isinstance(lo, (float, int)) and isinstance(hi, (float, int)):
+            if isinstance(val, (int, float)) and isinstance(lo, (int, float)) and isinstance(hi, (int, float)):
+                clamped = max(lo, min(hi, float(val)))
+                if isinstance(val, int):
+                    clamped = int(round(clamped))
+                if clamped != val:
+                    setattr(proto, key, clamped)
+                    val = clamped
+
+                row_widget.set_value(val)
                 row_widget.set_suffix(f"{unit}   ({lo:.2f}–{hi:.2f})")
             else:
+                row_widget.set_value(val)
                 row_widget.set_suffix(unit)
 
     def _modify_value(self, delta: float):
         """
         Modify the currently selected parameter by 'delta' encoder steps.
-        Handles:
-        - Correct per-parameter ranges.
-        - Locking IPI to 10 ms when burst_pulses_count == 1.
-        - Clamping to [lo, hi] to avoid insane values.
         """
         if not self.current_protocol:
             return
@@ -261,12 +310,11 @@ class ParamsPage(QWidget):
 
         proto = self.current_protocol
 
-        # --- HARD RULE: if burst_pulses_count == 1, lock IPI at IPI_FOR_SINGLE_BURST_MS ---
-        if key == "inter_pulse_interval_ms" and proto.burst_pulses_count == 1:
+        # lock IPI if single burst
+        if key == "inter_pulse_interval_ms" and int(getattr(proto, "burst_pulses_count", 0)) == 1:
             proto.inter_pulse_interval_ms = self.IPI_FOR_SINGLE_BURST_MS
             self._sync_ui_from_protocol()
             return
-        # -----------------------------------------------------------------------
 
         lo, hi = self._get_param_range_for_key(proto, key)
         row_widget = self.list_widget.itemWidget(item)
@@ -282,15 +330,14 @@ class ParamsPage(QWidget):
         if key == "frequency_hz":
             step = 0.1 if cur_val < 1.0 else 1.0
         elif key in ("inter_pulse_interval_ms", "inter_train_interval_s"):
-            step = 0.1
+            step = 1
         elif key == "ramp_fraction":
-            step = 0.01
+            step = 0.1
         elif key in ("ramp_steps", "pulses_per_train", "train_count", "burst_pulses_count"):
             step = 1
         else:
             step = 1
 
-        # Boundary guard – do not overshoot out of range
         if delta > 0 and cur_val + step > hi:
             return
         if delta < 0 and cur_val - step < lo:
@@ -298,17 +345,14 @@ class ParamsPage(QWidget):
 
         new_val = cur_val + delta * step
 
-        # Rounding for frequency
         if key == "frequency_hz":
             new_val = round(new_val, 1) if new_val < 1.0 else round(new_val)
 
-        # Extra safety: clamp into [lo, hi] (prevents crazy values)
         if isinstance(new_val, (float, int)):
             new_val = max(lo, min(hi, new_val))
 
         setattr(proto, key, new_val)
 
-        # If burst_pulses_count has just become 1, enforce IPI lock now
         if key == "burst_pulses_count" and int(proto.burst_pulses_count) == 1:
             proto.inter_pulse_interval_ms = self.IPI_FOR_SINGLE_BURST_MS
 
@@ -321,25 +365,15 @@ class ParamsPage(QWidget):
     #   GPIO backend integration
     # ---------------------------------------------------------
     def _connect_gpio_backend(self):
-        """
-        Connects the GPIO_Backend events (buttons + encoder) to UI actions.
-        """
         if not self.gpio_backend:
             return
 
-        # Encoder rotation: step (+1 / -1)
         self.gpio_backend.encoderStep.connect(self._on_encoder_step_hw)
-
-        # Navigation buttons
         self.gpio_backend.arrowUpPressed.connect(self._on_nav_up)
         self.gpio_backend.arrowDownPressed.connect(self._on_nav_down)
-
-        # Session control from hardware buttons
         self.gpio_backend.startPausePressed.connect(self._on_session_start_requested)
         self.gpio_backend.stopPressed.connect(self._on_session_stop_requested)
         self.gpio_backend.protocolPressed.connect(self._on_protocols_list_requested)
-
-        # RESERVED button -> toggle theme
         self.gpio_backend.reservedPressed.connect(self._toggle_theme)
 
     def _on_encoder_step_hw(self, step: int):
@@ -355,18 +389,21 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ---------------------------------------------------------
     def _on_session_start_requested(self):
-        if self.session_controls.get_state() == "Start":
+        state = self.session_controls.get_state()
+
+        if state == "Start":
             if hasattr(self.pulse_widget, "start"):
                 self.pulse_widget.start()
             self.session_controls.set_state(running=True, paused=False)
-
+            self._enter_remaining_mode()
             if self.backend:
                 self.backend.start_session()
-        elif self.session_controls.get_state() == "Pause":
+
+        elif state == "Pause":
             if hasattr(self.pulse_widget, "pause"):
                 self.pulse_widget.pause()
             self.session_controls.set_state(running=False, paused=True)
-
+            self._enter_remaining_mode()
             if self.backend:
                 self.backend.pause_session()
 
@@ -374,7 +411,7 @@ class ParamsPage(QWidget):
         if hasattr(self.pulse_widget, "stop"):
             self.pulse_widget.stop()
         self.session_controls.set_state(running=False, paused=False)
-
+        self._exit_remaining_mode()
         if self.backend:
             self.backend.stop_session()
 
@@ -382,6 +419,7 @@ class ParamsPage(QWidget):
         if hasattr(self.pulse_widget, "pause"):
             self.pulse_widget.pause()
         self.session_controls.set_state(running=False, paused=True)
+        self._enter_remaining_mode()
 
     def _on_protocols_list_requested(self):
         self.request_protocol_list.emit()
@@ -405,6 +443,10 @@ class ParamsPage(QWidget):
             print("Couldn't apply theme to gauge:", e)
 
     def _on_intensity_changed(self, v: int):
+        #Ignore changes that come from REMAINING mode animation
+        if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
+            return
+
         if self.current_protocol:
             self.current_protocol.intensity_percent_of_mt_init = int(v)
             self._sync_ui_from_protocol()

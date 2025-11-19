@@ -23,8 +23,47 @@ from config.settings import (
     CONTROL_ENC_N_PIN,
 )
 
-from hardware.gpio_controller import GPIOController
-from services.gpio_service import GPIOService, EncoderSpec
+# ----------------------------------------------------------------------
+#   Hardware vs mock selection
+# ----------------------------------------------------------------------
+HAVE_GPIO = False
+GPIOService = None          # type: ignore
+EncoderSpec = None          # type: ignore
+GPIOControllerBase = None   # type: ignore
+MockGPIOService = None      # type: ignore
+
+try:
+    # On Raspberry Pi with GPIO stack installed
+    from hardware.gpio_controller import GPIOController as _RealGPIOController
+    from services.gpio_service import GPIOService as _RealGPIOService, EncoderSpec as _RealEncoderSpec
+
+    GPIOControllerBase = _RealGPIOController
+    GPIOService = _RealGPIOService      # type: ignore
+    EncoderSpec = _RealEncoderSpec      # type: ignore
+    MockGPIOService = None              # explicit: no mock here by default
+    HAVE_GPIO = True
+except Exception:
+    # On PC: no real GPIO stack, fall back to mock
+    HAVE_GPIO = False
+
+    # Dummy controller so LED API still exists but does nothing
+    class _DummyGPIOController:
+        HIGH = 1
+        LOW = 0
+
+        def setmode_bcm(self) -> None:
+            pass
+
+        def setup_output(self, pin: int) -> None:
+            pass
+
+        def output(self, pin: int, value: int) -> None:
+            pass
+
+    GPIOControllerBase = _DummyGPIOController  # type: ignore
+
+    # Import your mock; this should NOT import any GPIO libraries
+    from workers.mock_gpio_service import MockGPIOService  # type: ignore
 
 
 class ButtonId(IntEnum):
@@ -43,7 +82,8 @@ class GPIO_Backend(QObject):
     """
     Single façade for physical GPIO inputs/outputs.
 
-    - Owns GPIOService and GPIOController.
+    - On Pi: owns GPIOService + real GPIOController.
+    - On PC: owns MockGPIOService + dummy GPIOController (LEDs are no-op).
     - Translates raw pins → semantic ButtonId.
     - Provides slots for LED control and exposes signals for UI.
     """
@@ -60,7 +100,7 @@ class GPIO_Backend(QObject):
     protocolPressed = Signal()
     enPressed = Signal()
     mtPressed = Signal()
-    reservedPressed = Signal()          # NEW: reserved hardware button
+    reservedPressed = Signal()
     arrowUpPressed = Signal()
     arrowDownPressed = Signal()
 
@@ -74,11 +114,12 @@ class GPIO_Backend(QObject):
         parent: Optional[QObject] = None,
         pull_up: bool = True,
         button_bouncetime_ms: int = 200,
+        use_mock: bool = False,  # you can force mock even if HAVE_GPIO=True
     ) -> None:
         super().__init__(parent)
 
         # Shared controller for inputs + LEDs
-        self._ctl = GPIOController()
+        self._ctl = GPIOControllerBase()  # real on Pi, dummy on PC
 
         # Map pins -> logical ButtonId
         self._pin_to_button_id = {
@@ -93,34 +134,63 @@ class GPIO_Backend(QObject):
             ARROW_UP_BUTTON_PIN: ButtonId.ARROW_UP,
         }
 
-        # Single encoder spec (extend to list if you add more encoders)
-        encoder = EncoderSpec(
-            a_pin=CONTROL_ENC_P_PIN,
-            b_pin=CONTROL_ENC_N_PIN,
-            id=0,
-            invert=False,
-            edge_rising_only=True,
-            debounce_ms=1,
-        )
+        # Encoder spec only makes sense if we actually have the real class
+        encoder = None
+        if HAVE_GPIO and EncoderSpec is not None:
+            encoder = EncoderSpec(
+                a_pin=CONTROL_ENC_P_PIN,
+                b_pin=CONTROL_ENC_N_PIN,
+                id=0,
+                invert=False,
+                edge_rising_only=True,
+                debounce_ms=1,
+            )
 
-        # GPIOService runs worker in its own QThread
-        self._gpio_svc = GPIOService(
-            pins=BUTTONS,
-            encoders=[encoder],
-            pull_up=pull_up,
-            button_bouncetime_ms=button_bouncetime_ms,
-            controller=self._ctl,
-            parent=self,
-        )
+        encoders = [encoder] if encoder is not None else []
+
+        # --------------------------------------------------------------
+        #   Choose real GPIOService vs MockGPIOService
+        # --------------------------------------------------------------
+        if HAVE_GPIO and not use_mock and GPIOService is not None:
+            # Raspberry Pi / real hardware
+            self._gpio_svc = GPIOService(
+                pins=BUTTONS,
+                encoders=encoders,
+                pull_up=pull_up,
+                button_bouncetime_ms=button_bouncetime_ms,
+                controller=self._ctl,
+                parent=self,
+            )
+        else:
+            # PC OR forced mock
+            if MockGPIOService is None:
+                raise RuntimeError("MockGPIOService is not available but GPIO is not usable.")
+            # Be tolerant of different mock signatures (parent-only vs full kwargs)
+            try:
+                self._gpio_svc = MockGPIOService(
+                    pins=BUTTONS,
+                    encoders=encoders,
+                    pull_up=pull_up,
+                    button_bouncetime_ms=button_bouncetime_ms,
+                    controller=self._ctl,
+                    parent=self,
+                )
+            except TypeError:
+                # fallback: older mock that only takes parent
+                self._gpio_svc = MockGPIOService(parent=self)
 
         # Wire service signals up to backend handlers
         self._gpio_svc.button_pressed.connect(self._on_button_pressed_pin)
         self._gpio_svc.button_released.connect(self._on_button_released_pin)
         self._gpio_svc.encoder_step.connect(self._on_encoder_step)
 
-        self._gpio_svc.error.connect(self.errorOccurred)
-        self._gpio_svc.ready.connect(self.ready)
-        self._gpio_svc.stopped.connect(self.stopped)
+        # passthrough “system” signals (mock also should provide these)
+        if hasattr(self._gpio_svc, "error"):
+            self._gpio_svc.error.connect(self.errorOccurred)
+        if hasattr(self._gpio_svc, "ready"):
+            self._gpio_svc.ready.connect(self.ready)
+        if hasattr(self._gpio_svc, "stopped"):
+            self._gpio_svc.stopped.connect(self.stopped)
 
         # Flag to know if LEDs are configured yet
         self._leds_setup = False
@@ -142,6 +212,7 @@ class GPIO_Backend(QObject):
     def _ensure_leds_setup(self) -> None:
         if self._leds_setup:
             return
+        # On PC, dummy controller just no-ops
         self._ctl.setmode_bcm()
         self._ctl.setup_output(RED_LED_PIN)
         self._ctl.setup_output(GREEN_LED_PIN)
@@ -185,7 +256,7 @@ class GPIO_Backend(QObject):
             self.enPressed.emit()
         elif bid == ButtonId.MT:
             self.mtPressed.emit()
-        elif bid == ButtonId.RESERVED:       # NEW: reserved -> separate signal
+        elif bid == ButtonId.RESERVED:
             self.reservedPressed.emit()
         elif bid == ButtonId.ARROW_UP:
             self.arrowUpPressed.emit()
@@ -201,4 +272,5 @@ class GPIO_Backend(QObject):
 
     @Slot(int, int)
     def _on_encoder_step(self, enc_id: int, step: int) -> None:
+        # we ignore enc_id for now, single encoder only
         self.encoderStep.emit(step)

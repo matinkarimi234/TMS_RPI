@@ -2,11 +2,10 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-from PySide6.QtCore import Qt, QRectF, QTimer, QSize
+from PySide6.QtCore import Qt, QRectF, QTimer, QSize, Signal
 from PySide6.QtGui import QPainter, QPen, QFont, QPalette
 from PySide6.QtWidgets import (
-    QWidget, QLabel, QPushButton,
-    QVBoxLayout, QHBoxLayout, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy
 )
 
 ###############################################################################
@@ -273,8 +272,6 @@ class PulseTrainView(QWidget):
         # y_label is already where we want the text baseline
         painter.drawText(int(tx), int(y_label), text)
 
-
-
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, False)
@@ -424,7 +421,6 @@ class PulseTrainView(QWidget):
                 ipi_text
             )
 
-
         # ---- CENTER LABEL: "........xN........" (N = pulses_per_train) ----
         label_font = QFont(painter.font())
         label_font.setPointSizeF(label_font.pointSizeF() * 0.9)
@@ -456,18 +452,14 @@ class PulseTrainView(QWidget):
 
 class SessionStatusBar(QWidget):
     """
-    Bottom row: Start/Stop button only (elapsed/remaining removed).
+    Bottom row only for spacing, no logic.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        # self.btn_start = QPushButton("Start")
-        # self.btn_start.setObjectName("StartStopButton")
-
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addStretch(1)
-        # lay.addWidget(self.btn_start)
         lay.addStretch(1)
 
     # kept for compatibility; they do nothing now
@@ -477,9 +469,6 @@ class SessionStatusBar(QWidget):
     def set_remaining_text(self, txt: str):
         pass
 
-    # def set_button_running(self, running: bool):
-    #     self.btn_start.setText("Stop" if running else "Start")
-
 
 ###############################################################################
 # PulseBarsWidget
@@ -487,24 +476,34 @@ class SessionStatusBar(QWidget):
 
 class PulseBarsWidget(QWidget):
     """
-    Orchestrates the live stimulation cycle.
+    Orchestrates the live stimulation cycle with proper timing:
 
-    ACTIVE TRAIN:
-        - show PulseTrainView with pulses, top bracket,
-          interval brackets and center label
-        - hide CountdownCircle
+      - Each burst has 1..5 pulses inside it.
+      - Within a burst:
+            time(start(pulse i) -> start(pulse i+1)) = IPI (ms)
+      - Bursts repeat in a train at 'frequency_hz':
+            time(start(burst n) -> start(burst n+1)) = 1/frequency_hz
+      - Between trains: inter_train_interval_s (ITI), no pulses.
 
-    REST:
-        - hide PulseTrainView
-        - show CountdownCircle with shrinking arc & seconds until next train
+    We approximate:
+      - Train "burst phase" duration from that model
+      - Session duration = N * train_dur + (N-1) * ITI
+      - Remaining pulses/time derived from elapsed time and this structure.
+
+    Signals:
+        sessionRemainingChanged(int remaining_pulses,
+                                int total_pulses,
+                                float remaining_seconds,
+                                float total_seconds)
     """
+
+    sessionRemainingChanged = Signal(int, int, float, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.train_view = PulseTrainView(self)
         self.rest_circle = CountdownCircle(self)
-        # SessionStatusBar is still used only for styling, no start button logic now
         self.status_bar = SessionStatusBar(self)
 
         # runtime state
@@ -545,6 +544,54 @@ class PulseBarsWidget(QWidget):
         # default visuals
         self._show_train_mode()
 
+    # ---------- timing helpers ----------
+
+    def _compute_train_duration_s(self) -> float:
+        """
+        Compute active train duration from the burst structure:
+
+            pulses_per_train = P
+            burst_pulses_count = B
+            IPI_s between pulses inside a burst
+            1/freq between starts of bursts
+
+        pulse n (0-based) occurs at:
+
+            burst_idx    = n // B
+            idx_in_burst = n % B
+
+            t_n = burst_idx * burst_spacing_s + idx_in_burst * IPI_s
+
+        where burst_spacing_s = 1/freq.
+
+        Train duration ≈ t_(P-1) (ignoring pulse width).
+        """
+        P = max(1, int(self._pulses_per_train))
+        B = max(1, int(self._burst_pulses_count))
+        ipi_s = max(0.0, float(self._ipi_ms) / 1000.0)
+        freq = max(0.0001, float(self._freq_hz))
+        burst_spacing_s = 1.0 / freq
+
+        last_idx = P - 1
+        burst_idx = last_idx // B
+        idx_in_burst = last_idx % B
+        t_last = burst_idx * burst_spacing_s + idx_in_burst * ipi_s
+
+        return max(0.0, t_last)
+
+    def _compute_total_duration_s(self) -> float:
+        """
+        Total session duration:
+
+            N trains, each of duration train_dur,
+            with ITI between trains (no ITI after last train):
+
+                total = N * train_dur + (N - 1) * ITI
+        """
+        train_dur = self._burst_duration_s
+        N = max(1, int(self._train_count))
+        return N * train_dur + max(0, N - 1) * self._iti_s
+
     # ---------- public API ----------
 
     def set_protocol(self, proto) -> None:
@@ -558,23 +605,18 @@ class PulseBarsWidget(QWidget):
             intensity_percent_of_mt
             inter_pulse_interval_ms
             burst_pulses_count
-            total_duration_s (property)
         """
-        self._train_count = proto.train_count
-        self._pulses_per_train = proto.pulses_per_train
-        self._freq_hz = proto.frequency_hz
-        self._iti_s = proto.inter_train_interval_s
-        self._amp_label = f"{int(round(proto.intensity_percent_of_mt))}"
-        self._ipi_ms = proto.inter_pulse_interval_ms
-        self._burst_pulses_count = proto.burst_pulses_count
+        self._train_count = int(getattr(proto, "train_count", 1))
+        self._pulses_per_train = int(getattr(proto, "pulses_per_train", 1))
+        self._freq_hz = float(getattr(proto, "frequency_hz", 1.0))
+        self._iti_s = float(getattr(proto, "inter_train_interval_s", 0.0))
+        self._amp_label = f"{int(round(getattr(proto, 'intensity_percent_of_mt', 120)))}"
+        self._ipi_ms = float(getattr(proto, "inter_pulse_interval_ms", 0.0))
+        self._burst_pulses_count = int(getattr(proto, "burst_pulses_count", 1))
 
-        # visual burst duration used for timing/playhead (train-level)
-        self._burst_duration_s = (
-            self._pulses_per_train / self._freq_hz if self._freq_hz else 0.0
-        )
-
-        # full session duration (stim+rests)
-        self._total_duration_s = proto.total_duration_s
+        # compute durations from correct model
+        self._burst_duration_s = self._compute_train_duration_s()
+        self._total_duration_s = self._compute_total_duration_s()
 
         # reset session state (also resets offset/paused)
         self.stop()
@@ -597,6 +639,9 @@ class PulseBarsWidget(QWidget):
             frac=0.0,
             seconds_left=self._iti_s
         )
+
+        # emit initial "all remaining"
+        self._emit_remaining(elapsed_s=0.0)
 
         self._show_train_mode()
 
@@ -640,16 +685,14 @@ class PulseBarsWidget(QWidget):
         """
         Fully stop and reset the session.
         """
-        if not self._running and not self._paused:
-            # already fully stopped
-            return
+        had_activity = self._running or self._paused
 
         self._running = False
         self._paused = False
         self._elapsed_offset_s = 0.0
         self.timer.stop()
 
-        # Optionally reset visuals to t=0
+        # reset visuals to t=0
         self.train_view.set_train_position(0, self._train_count)
         self.train_view.set_burst_state(
             pulses_per_train=self._pulses_per_train,
@@ -661,7 +704,11 @@ class PulseBarsWidget(QWidget):
         )
         self._show_train_mode()
 
-    # ---------- internal helpers ----------
+        if had_activity:
+            # when fully stopped, emit "back to all remaining"
+            self._emit_remaining(elapsed_s=0.0)
+
+    # ---------- cycle state ----------
 
     def _get_cycle_state(self, elapsed_s: float):
         """
@@ -678,9 +725,9 @@ class PulseBarsWidget(QWidget):
 
         session_dur = self._total_duration_s
 
-        if elapsed_s >= session_dur:
+        if session_dur > 0.0 and elapsed_s >= session_dur:
             return {
-                "train_idx": self._train_count - 1,
+                "train_idx": max(0, self._train_count - 1),
                 "phase": "done",
                 "phase_progress": 1.0,
                 "phase_remaining_s": 0.0,
@@ -723,7 +770,7 @@ class PulseBarsWidget(QWidget):
 
         # fallback
         return {
-            "train_idx": self._train_count - 1,
+            "train_idx": max(0, self._train_count - 1),
             "phase": "done",
             "phase_progress": 1.0,
             "phase_remaining_s": 0.0,
@@ -737,6 +784,75 @@ class PulseBarsWidget(QWidget):
         self.train_view.setVisible(False)
         self.rest_circle.setVisible(True)
 
+    # ---------- remaining pulses/time ----------
+
+    def _emit_remaining(self, elapsed_s: float):
+        """
+        Compute remaining pulses & time based on where we are in
+        the train+rest structure.
+
+        Approximation:
+          - pulses are spread over each train's active burst duration
+            (we don't individually step through every IPI inside bursts)
+          - no pulses happen during ITI
+        """
+        total_pulses = int(self._train_count * self._pulses_per_train)
+        total_time = max(0.0, float(self._total_duration_s))
+
+        if total_time <= 0.0 or total_pulses <= 0:
+            remaining_pulses = total_pulses
+            remaining_seconds = max(0.0, total_time - elapsed_s)
+            self.sessionRemainingChanged.emit(
+                remaining_pulses, total_pulses,
+                remaining_seconds, total_time
+            )
+            return
+
+        burst_dur = self._burst_duration_s
+        rest_dur = self._iti_s
+        pulses_per_train = self._pulses_per_train
+
+        t = elapsed_s
+        pulses_done = 0
+
+        for train_i in range(self._train_count):
+            if t <= 0:
+                break
+
+            # burst part
+            if t >= burst_dur:
+                pulses_done += pulses_per_train
+                t -= burst_dur
+            else:
+                # inside this train's burst
+                frac = t / burst_dur if burst_dur > 0 else 1.0
+                pulses_done += int(pulses_per_train * frac)
+                t = 0
+                break
+
+            # after burst, if last train -> no more
+            if train_i == self._train_count - 1:
+                break
+
+            # rest part: no pulses added
+            if t >= rest_dur:
+                t -= rest_dur
+            else:
+                # inside rest, no more pulses
+                t = 0
+                break
+
+        pulses_done = max(0, min(total_pulses, pulses_done))
+        remaining_pulses = total_pulses - pulses_done
+        remaining_seconds = max(0.0, total_time - elapsed_s)
+
+        self.sessionRemainingChanged.emit(
+            remaining_pulses,
+            total_pulses,
+            remaining_seconds,
+            total_time,
+        )
+
     # ---------- tick ----------
 
     def _tick(self):
@@ -745,7 +861,7 @@ class PulseBarsWidget(QWidget):
         elapsed = self._elapsed_offset_s + (now - self._start_time)
 
         # clamp at total duration
-        if elapsed >= self._total_duration_s:
+        if self._total_duration_s > 0 and elapsed >= self._total_duration_s:
             elapsed = self._total_duration_s
             # update offset so state is consistent, then stop
             self._elapsed_offset_s = elapsed
@@ -790,6 +906,9 @@ class PulseBarsWidget(QWidget):
                 ipi_ms=self._ipi_ms,
                 burst_pulses_count=self._burst_pulses_count,
             )
+
+        # emit remaining pulses/time for gauge
+        self._emit_remaining(elapsed_s=elapsed)
 
     # ---------- util ----------
 

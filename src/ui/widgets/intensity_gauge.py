@@ -1,6 +1,6 @@
-# intensity_gauge.py
 from __future__ import annotations
 from typing import Optional
+from enum import Enum
 
 from PySide6.QtCore import Qt, QRectF, QSize, Signal, QPointF, Property, QEvent
 from PySide6.QtGui import QPainter, QPen, QFont, QConicalGradient, QColor, QBrush
@@ -16,12 +16,21 @@ def _luminance(c: QColor) -> float:
     return 0.2126 * c.redF() + 0.7152 * c.greenF() + 0.0722 * c.blueF()
 
 
+class GaugeMode(Enum):
+    INTENSITY = 0       # Intensity (% of MT) behavior
+    MT_PERCENT = 1      # Another MT-related % mode
+    REMAINING = 2       # Remaining pulses/time display
+
+
 class IntensityGauge(QWidget):
     """
-    Donut gauge for 'Intensity (% of MT)'.
-    - Uses theme tokens via applyTheme(); if gradient tokens are missing,
-      derives a gradient from ACCENT_COLOR so themes still affect it.
-    - Font sizes are QSS-tweakable with qproperty-*.
+    Donut gauge that can be in 3 modes:
+    - INTENSITY: 'Intensity (% of MT)' style.
+    - MT_PERCENT: another MT-related % mode (you provide the value).
+    - REMAINING: Remaining pulses/time:
+        * Top text: "remaining_pulses / total_pulses"
+        * Bottom text: "remaining_time / total_time"
+        * Donut fill = remaining fraction (0–100%).
     """
     valueChanged = Signal(int)
 
@@ -48,8 +57,16 @@ class IntensityGauge(QWidget):
         self._text_secondary = QColor("#9aa0a6")
         self._track_override: Optional[QColor] = None
 
+        # mode & labels
+        self._mode: GaugeMode = GaugeMode.INTENSITY
         self._title_line = "INTENSITY"
-        self._subtitle   = "MOTOR THRESHOLD"
+        self._subtitle   = "MT%"   # default subtitle
+
+        # REMAINING mode state
+        self._rem_pulses = 0
+        self._total_pulses = 0
+        self._rem_time_sec = 0.0
+        self._total_time_sec = 0.0
 
         # QSS typography knobs (smaller defaults)
         self._value_point = 0.0
@@ -107,6 +124,17 @@ class IntensityGauge(QWidget):
         self._ring_thickness_ratio = max(0.06, min(0.35, float(r))); self.update()
     ringThicknessRatio = Property(float, getRingThicknessRatio, setRingThicknessRatio)
 
+    # mode accessors
+    def mode(self) -> GaugeMode:
+        return self._mode
+
+    def setMode(self, mode: GaugeMode) -> None:
+        if isinstance(mode, GaugeMode):
+            self._mode = mode
+        else:
+            self._mode = GaugeMode(int(mode))
+        self.update()
+
     # -------- Theme hook --------
     def applyTheme(self, theme_manager, theme_name: str):
         """
@@ -130,7 +158,6 @@ class IntensityGauge(QWidget):
                     base = QColor(acc)
                     self._grad_start = base.lighter(130)  # brighter
                     self._grad_end   = base.lighter(170)  # even brighter
-                # else: keep existing defaults
 
             if cs:
                 self._text_secondary = QColor(cs)
@@ -150,12 +177,22 @@ class IntensityGauge(QWidget):
 
     # -------- public config --------
     def setTitles(self, title: str, subtitle: str) -> None:
+        """
+        Only really used in INTENSITY / MT_PERCENT modes.
+        REMAINING mode uses its own top/bottom texts.
+        """
         self._title_line = str(title)
         self._subtitle = str(subtitle)
         self.update()
 
     # -------- Protocol helpers --------
     def setFromProtocol(self, proto: "TMSProtocol"):
+        """
+        Helper for INTENSITY mode: uses proto.max_intensity_percent_of_mt
+        and proto.intensity_percent_of_mt.
+        """
+        if self._mode != GaugeMode.INTENSITY:
+            return
         try:
             self.blockSignals(True)
             dyn_max = int(round(getattr(proto, "max_intensity_percent_of_mt")))
@@ -167,10 +204,47 @@ class IntensityGauge(QWidget):
             self.blockSignals(False)
 
     def syncToProtocol(self, proto: "TMSProtocol"):
+        """
+        Push the current value back into the protocol in INTENSITY mode.
+        MT_PERCENT/REMAINING are typically display only.
+        """
+        if self._mode != GaugeMode.INTENSITY:
+            return
         try:
             proto.intensity_percent_of_mt = float(self._val)
         except Exception:
             pass
+
+    # -------- REMAINING mode API --------
+    def setRemainingState(
+        self,
+        remaining_pulses: int,
+        total_pulses: int,
+        remaining_seconds: float,
+        total_seconds: float,
+    ) -> None:
+        self._rem_pulses = max(0, int(remaining_pulses))
+        self._total_pulses = max(0, int(total_pulses))
+        self._rem_time_sec = max(0.0, float(remaining_seconds))
+        self._total_time_sec = max(0.0, float(total_seconds))
+
+        fracs = []
+        if self._total_pulses > 0:
+            fracs.append(self._rem_pulses / self._total_pulses)
+        if self._total_time_sec > 0:
+            fracs.append(self._rem_time_sec / self._total_time_sec)
+
+        if fracs:
+            frac = max(0.0, min(1.0, min(fracs)))
+        else:
+            frac = 0.0
+
+        #Don't emit valueChanged here – this is just visual animation
+        old_block = self.signalsBlocked()
+        self.blockSignals(True)
+        self.setRange(0, 100)
+        self.setValue(int(round(frac * 100)))
+        self.blockSignals(old_block)
 
     # -------- API --------
     def value(self) -> int:
@@ -211,13 +285,24 @@ class IntensityGauge(QWidget):
             self.update()
         super().changeEvent(ev)
 
+    def _isInteractiveMode(self) -> bool:
+        """Only INTENSITY and MT_PERCENT should be user-draggable."""
+        return self._mode in (GaugeMode.INTENSITY, GaugeMode.MT_PERCENT)
+
     def wheelEvent(self, ev):
+        if not self._isInteractiveMode():
+            ev.ignore()
+            return
         steps = ev.angleDelta().y() // 120
         if steps:
             self.setValue(self._val + steps * self._step)
         ev.accept()
 
     def keyPressEvent(self, ev):
+        if not self._isInteractiveMode():
+            ev.ignore()
+            return
+
         k = ev.key()
         if k in (Qt.Key_Left, Qt.Key_Down):
             self.setValue(self._val - self._step); ev.accept(); return
@@ -234,11 +319,17 @@ class IntensityGauge(QWidget):
         super().keyPressEvent(ev)
 
     def mousePressEvent(self, ev):
+        if not self._isInteractiveMode():
+            ev.ignore()
+            return
         self._drag_anchor_y = float(ev.position().y())
         self._drag_start_val = self._val
         ev.accept()
 
     def mouseMoveEvent(self, ev):
+        if not self._isInteractiveMode():
+            ev.ignore()
+            return
         if self._drag_anchor_y is None or self._drag_start_val is None:
             return
         dy = self._drag_anchor_y - float(ev.position().y())
@@ -246,11 +337,14 @@ class IntensityGauge(QWidget):
         ev.accept()
 
     def mouseReleaseEvent(self, ev):
+        if not self._isInteractiveMode():
+            ev.ignore()
+            return
         self._drag_anchor_y = None
         self._drag_start_val = None
         ev.accept()
 
-    # -------- Paint --------
+    # -------- helpers --------
     def _fraction(self) -> float:
         if self._max == self._min:
             return 0.0
@@ -265,6 +359,18 @@ class IntensityGauge(QWidget):
         col.setAlpha(90)
         return col
 
+    @staticmethod
+    def _format_time(seconds: float) -> str:
+        total = max(0, int(round(seconds)))
+        h = total // 3600
+        m = (total % 3600) // 60
+        s = total % 60
+        if h > 0:
+            return f"{h:d}:{m:02d}:{s:02d}"
+        else:
+            return f"{m:d}:{s:02d}"
+
+    # -------- Paint --------
     def paintEvent(self, _):
         pal = self.palette()
         bg = pal.window().color()
@@ -308,34 +414,82 @@ class IntensityGauge(QWidget):
         p.setBrush(inner_col)
         p.drawEllipse(inner)
 
-        # center value text
-        p.setPen(text)
-        f_big = QFont(self.font())
-        if self._value_family: f_big.setFamily(self._value_family)
-        auto_val_pt = max(10.0, s * 0.13 * self._value_scale)
-        val_pt = self._value_point if self._value_point > 0.0 else auto_val_pt
-        f_big.setBold(True); f_big.setPointSizeF(val_pt)
-        p.setFont(f_big)
-        p.drawText(self.rect(), Qt.AlignCenter, f"{self._val}%")
+        # center value text (percentage) – NOT in REMAINING mode
+        if self._mode != GaugeMode.REMAINING:
+            p.setPen(text)
+            f_big = QFont(self.font())
+            if self._value_family:
+                f_big.setFamily(self._value_family)
+            auto_val_pt = max(10.0, s * 0.13 * self._value_scale)
+            val_pt = self._value_point if self._value_point > 0.0 else auto_val_pt
+            f_big.setBold(True)
+            f_big.setPointSizeF(val_pt)
+            p.setFont(f_big)
+            p.drawText(self.rect(), Qt.AlignCenter, f"{self._val}%")
 
-        # title
-        p.setPen(self._text_secondary)
-        f_mid = QFont(self.font())
-        if self._title_family: f_mid.setFamily(self._title_family)
-        auto_title_pt = max(8.0, s * 0.045 * self._title_scale)
-        title_pt = self._title_point if self._title_point > 0.0 else auto_title_pt
-        f_mid.setBold(True); f_mid.setPointSizeF(title_pt)
-        p.setFont(f_mid)
-        p.drawText(0, int(cy + s * 0.10), self.width(), 22, Qt.AlignHCenter, self._title_line)
+        # text around center
+        if self._mode == GaugeMode.REMAINING:
+            # Use darker / primary text color
+            p.setPen(text)
 
-        # subtitle
-        f_sub = QFont(self.font())
-        if self._subtitle_family: f_sub.setFamily(self._subtitle_family)
-        auto_sub_pt = max(7.0, s * 0.036 * self._subtitle_scale)
-        sub_pt = self._subtitle_point if self._subtitle_point > 0.0 else auto_sub_pt
-        f_sub.setPointSizeF(sub_pt)
-        p.setFont(f_sub)
-        p.drawText(0, int(cy + s * 0.17), self.width(), 20, Qt.AlignHCenter, self._subtitle)
+            # Top: pulses (ratio only, moved up & bigger)
+            f_mid = QFont(self.font())
+            if self._title_family:
+                f_mid.setFamily(self._title_family)
+            # bigger scaling for remaining mode
+            auto_title_pt = max(10.0, s * 0.05)  # was ~0.045
+            title_pt = self._title_point if self._title_point > 0.0 else auto_title_pt
+            f_mid.setBold(True)
+            f_mid.setPointSizeF(title_pt)
+            p.setFont(f_mid)
+
+            if self._total_pulses > 0:
+                pulses_str = f"{self._rem_pulses} / {self._total_pulses}"
+            else:
+                pulses_str = f"{self._rem_pulses}"
+
+            p.drawText(0, int(cy - s * 0.14), self.width(), 30, Qt.AlignHCenter, pulses_str)
+
+            # Bottom: time (ratio only, moved up & bigger)
+            f_sub = QFont(self.font())
+            if self._subtitle_family:
+                f_sub.setFamily(self._subtitle_family)
+            auto_sub_pt = max(9.0, s * 0.05)  # was ~0.036
+            sub_pt = self._subtitle_point if self._subtitle_point > 0.0 else auto_sub_pt
+            f_sub.setPointSizeF(sub_pt)
+            p.setFont(f_sub)
+
+            if self._total_time_sec > 0:
+                rem_t = self._format_time(self._rem_time_sec)
+                tot_t = self._format_time(self._total_time_sec)
+                time_str = f"{rem_t} / {tot_t}"
+            else:
+                time_str = self._format_time(self._rem_time_sec)
+
+            p.drawText(0, int(cy + s * 0.02), self.width(), 26, Qt.AlignHCenter, time_str)
+
+        else:
+            # INTENSITY / MT_PERCENT: original title/subtitle style using secondary text color
+            p.setPen(self._text_secondary)
+
+            f_mid = QFont(self.font())
+            if self._title_family:
+                f_mid.setFamily(self._title_family)
+            auto_title_pt = max(8.0, s * 0.045 * self._title_scale)
+            title_pt = self._title_point if self._title_point > 0.0 else auto_title_pt
+            f_mid.setBold(True)
+            f_mid.setPointSizeF(title_pt)
+            p.setFont(f_mid)
+            p.drawText(0, int(cy + s * 0.10), self.width(), 22, Qt.AlignHCenter, self._title_line)
+
+            f_sub = QFont(self.font())
+            if self._subtitle_family:
+                f_sub.setFamily(self._subtitle_family)
+            auto_sub_pt = max(7.0, s * 0.036 * self._subtitle_scale)
+            sub_pt = self._subtitle_point if self._subtitle_point > 0.0 else auto_sub_pt
+            f_sub.setPointSizeF(sub_pt)
+            p.setFont(f_sub)
+            p.drawText(0, int(cy + s * 0.17), self.width(), 20, Qt.AlignHCenter, self._subtitle)
 
         p.end()
 
@@ -343,12 +497,47 @@ class IntensityGauge(QWidget):
 # tiny tester
 if __name__ == "__main__":
     import sys
-    from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
+    from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QHBoxLayout
     app = QApplication(sys.argv)
     w = QWidget()
     lay = QVBoxLayout(w)
     g = IntensityGauge(maximum=180)
+
+    # quick mode toggles for testing
+    btn_row = QHBoxLayout()
+    b1 = QPushButton("INTENSITY")
+    b2 = QPushButton("MT%")
+    b3 = QPushButton("REMAINING")
+
+    def to_intensity():
+        g.setMode(GaugeMode.INTENSITY)
+        g.setTitles("INTENSITY", "MT%")
+        g.setRange(0, 180)
+        g.setValue(90)
+
+    def to_mt():
+        g.setMode(GaugeMode.MT_PERCENT)
+        g.setTitles("MT%", "PERCENT")
+        g.setRange(0, 150)
+        g.setValue(80)
+
+    def to_remaining():
+        g.setMode(GaugeMode.REMAINING)
+        g.setRemainingState(
+            remaining_pulses=600,
+            total_pulses=1000,
+            remaining_seconds=300,
+            total_seconds=600,
+        )
+
+    b1.clicked.connect(to_intensity)
+    b2.clicked.connect(to_mt)
+    b3.clicked.connect(to_remaining)
+    for b in (b1, b2, b3):
+        btn_row.addWidget(b)
+
+    lay.addLayout(btn_row)
     lay.addWidget(g)
-    w.resize(320, 360)
+    w.resize(360, 420)
     w.show()
     sys.exit(app.exec())
