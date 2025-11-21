@@ -1,8 +1,12 @@
 from typing import Optional
 
 from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton
+    QApplication,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
 )
 
 from app.theme_manager import ThemeManager
@@ -43,9 +47,13 @@ class ParamsPage(QWidget):
         self.backend: Optional[Uart_Backend] = None
         self.gpio_backend: Optional[GPIO_Backend] = gpio_backend
 
-        # NEW: explicit session state tracking
+        # explicit session state tracking
         self.session_active: bool = False      # True only when running
         self.session_paused: bool = False      # True only when paused
+
+        # global enable flag (tied to EN button + LEDs)
+        # False => bottom panel red, start/stop disabled, red LED on
+        self.enabled: bool = False
 
         # --- Primary widgets ---
         self.intensity_gauge = IntensityGauge(self)
@@ -85,32 +93,20 @@ class ParamsPage(QWidget):
         self.top_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
 
         self.bottom_panel = QWidget()
+        self.bottom_panel.setObjectName("bottom_panel")
         self.bottom_panel.setFixedHeight(50)
-        self.bottom_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
+        # Style for bottom_panel will be set via _update_bottom_panel_style()
 
-        # bottom row controls
+        # bottom row controls: one SessionControlWidget that internally has:
+        # Protocol, MT, Toggle Theme, Stop, Start/Pause
         hbox_bottom = QHBoxLayout(self.bottom_panel)
         hbox_bottom.setContentsMargins(10, 0, 10, 0)
 
-        self.btn_select_protocol = QPushButton("Select Protocol")
-        self.btn_select_protocol.clicked.connect(self._on_protocols_list_requested)
-
-        self.btn_toggle_theme = QPushButton("Toggle Theme")
-        self.btn_toggle_theme.clicked.connect(self._toggle_theme)
-
-        # Session control widget (Pause, Start/Stop as frames)
         self.session_controls = SessionControlWidget(self)
 
-        # LEFT: Select Protocol
-        hbox_bottom.addWidget(self.btn_select_protocol, alignment=Qt.AlignLeft)
-
-        # CENTER: Toggle theme (centered horizontally)
         hbox_bottom.addStretch(1)
-        hbox_bottom.addWidget(self.btn_toggle_theme, alignment=Qt.AlignHCenter)
+        hbox_bottom.addWidget(self.session_controls, alignment=Qt.AlignHCenter)
         hbox_bottom.addStretch(1)
-
-        # RIGHT: Session controls
-        hbox_bottom.addWidget(self.session_controls, alignment=Qt.AlignRight)
 
         # main content layout
         content = QHBoxLayout()
@@ -140,6 +136,12 @@ class ParamsPage(QWidget):
         lay.addLayout(content, stretch=1)
         lay.addWidget(self.bottom_panel)
 
+        # Initial enable state:
+        # - red gradient on bottom panel
+        # - Start/Stop disabled
+        # - LEDs (if GPIO) set red
+        self._apply_enable_state()
+
         # apply theme + connect GPIO
         self._apply_theme_to_app(self.current_theme)
         self._connect_gpio_backend()
@@ -158,6 +160,14 @@ class ParamsPage(QWidget):
         self.session_controls.startRequested.connect(self._on_session_start_requested)
         self.session_controls.stopRequested.connect(self._on_session_stop_requested)
         self.session_controls.pauseRequested.connect(self._on_session_start_requested)
+
+        # Extra session controls (Protocol / MT / Theme)
+        if hasattr(self.session_controls, "protocolRequested"):
+            self.session_controls.protocolRequested.connect(self._on_protocols_list_requested)
+        if hasattr(self.session_controls, "themeToggleRequested"):
+            self.session_controls.themeToggleRequested.connect(self._toggle_theme)
+        if hasattr(self.session_controls, "mtRequested"):
+            self.session_controls.mtRequested.connect(self._on_mt_requested)
 
     # ---------------------------------------------------------
     #   Protocol binding
@@ -190,7 +200,7 @@ class ParamsPage(QWidget):
         running or paused (not while in pure settings mode).
         """
         try:
-            if self.session_active or self.session_paused:  # NEW
+            if self.session_active or self.session_paused:
                 self.intensity_gauge.setMode(GaugeMode.REMAINING)
         except Exception:
             pass
@@ -201,7 +211,7 @@ class ParamsPage(QWidget):
         session anymore (i.e., in settings / idle).
         """
         try:
-            if not (self.session_active or self.session_paused):  # NEW
+            if not (self.session_active or self.session_paused):
                 self.intensity_gauge.setMode(GaugeMode.INTENSITY)
                 if self.current_protocol:
                     self.intensity_gauge.setFromProtocol(self.current_protocol)
@@ -223,7 +233,7 @@ class ParamsPage(QWidget):
         try:
             if not (self.session_active or self.session_paused):
                 # In pure settings mode: ignore remaining updates
-                return  # NEW
+                return
 
             if self.intensity_gauge.mode() != GaugeMode.REMAINING:
                 self.intensity_gauge.setMode(GaugeMode.REMAINING)
@@ -397,6 +407,11 @@ class ParamsPage(QWidget):
         self.gpio_backend.stopPressed.connect(self._on_session_stop_requested)
         self.gpio_backend.protocolPressed.connect(self._on_protocols_list_requested)
         self.gpio_backend.reservedPressed.connect(self._toggle_theme)
+        if hasattr(self.gpio_backend, "mtPressed"):
+            self.gpio_backend.mtPressed.connect(self._on_mt_requested)
+
+        # EN button toggles global enable/disable
+        self.gpio_backend.enPressed.connect(self._on_en_pressed)
 
     def _on_encoder_step_hw(self, step: int):
         self._modify_value(float(step))
@@ -414,7 +429,6 @@ class ParamsPage(QWidget):
         state = self.session_controls.get_state()
 
         if state == "Start":
-            # NEW: update session state
             self.session_active = True
             self.session_paused = False
 
@@ -426,7 +440,6 @@ class ParamsPage(QWidget):
                 self.backend.start_session()
 
         elif state == "Pause":
-            # NEW: update session state
             self.session_active = False
             self.session_paused = True
 
@@ -438,7 +451,6 @@ class ParamsPage(QWidget):
                 self.backend.pause_session()
 
     def _on_session_stop_requested(self):
-        # NEW: clear session state
         self.session_active = False
         self.session_paused = False
 
@@ -454,13 +466,127 @@ class ParamsPage(QWidget):
             self.pulse_widget.pause()
         self.session_controls.set_state(running=False, paused=True)
 
-        # NEW: keep behavior consistent
         self.session_active = False
         self.session_paused = True
         self._enter_remaining_mode()
 
     def _on_protocols_list_requested(self):
         self.request_protocol_list.emit()
+
+    def _on_mt_requested(self):
+        """
+        Handler for MT button (both UI and GPIO).
+        Implement MT logic here when you know what you want it to do.
+        For now it's just a placeholder.
+        """
+        print("MT requested (not implemented yet)")
+
+    # ---------------------------------------------------------
+    #   Enable state + gradient + LEDs
+    # ---------------------------------------------------------
+    def _get_theme_color(self, attr_name: str, fallback: str) -> QColor:
+        """
+        Safely get a QColor from ThemeManager attribute or fallback.
+        Accepts either QColor or '#RRGGBB' string in theme.
+        """
+        try:
+            raw = getattr(self.theme_manager, attr_name, fallback)
+        except Exception:
+            raw = fallback
+        if isinstance(raw, QColor):
+            return raw
+        return QColor(str(raw))
+
+    def _update_bottom_panel_style(self) -> None:
+        """
+        Set bottom_panel gradient depending on self.enabled,
+        using ThemeManager.NORMAL_COLOR / DANGER_COLOR.
+        If not present, fall back to:
+            NORMAL_COLOR = "#00B75A"
+            DANGER_COLOR = "#CC4444"
+        """
+        normal_color = self._get_theme_color("NORMAL_COLOR", "#00B75A")
+        danger_color = self._get_theme_color("DANGER_COLOR", "#CC4444")
+
+        base = normal_color if self.enabled else danger_color
+        r, g, b, _ = base.red(), base.green(), base.blue(), base.alpha()
+
+        # Vertical gradient: transparent at top, semi-opaque at bottom
+        css = f"""
+        QWidget#bottom_panel {{
+            background: qlineargradient(
+                x1:0, y1:0, x2:0, y2:1,
+                stop:0 rgba({r}, {g}, {b}, 0),
+                stop:1 rgba({r}, {g}, {b}, 120)
+            );
+        }}
+        """
+        self.bottom_panel.setStyleSheet(css)
+
+    def _set_start_stop_enabled(self, enabled: bool) -> None:
+        """
+        Disable ONLY Start/Stop inside SessionControlWidget.
+        Protocol / MT / Theme stay enabled.
+        """
+        sc = getattr(self, "session_controls", None)
+        if sc is None:
+            return
+
+        if hasattr(sc, "setStartStopEnabled"):
+            try:
+                sc.setStartStopEnabled(enabled)
+                return
+            except Exception:
+                pass
+
+        # Defensive fallback if API changes:
+        for attr in ("start_pause_frame", "start_button", "btn_start", "button_start"):
+            if hasattr(sc, attr):
+                try:
+                    getattr(sc, attr).setEnabled(enabled)
+                except Exception:
+                    pass
+        for attr in ("stop_frame", "stop_button", "btn_stop", "button_stop"):
+            if hasattr(sc, attr):
+                try:
+                    getattr(sc, attr).setEnabled(enabled)
+                except Exception:
+                    pass
+
+    def _apply_enable_state(self) -> None:
+        """
+        Apply current enable/disable state to:
+        - bottom gradient (red/green)
+        - Start/Stop buttons (but NOT protocol/theme/MT buttons)
+        - GPIO LEDs (if available)
+        """
+        # Gradient
+        self._update_bottom_panel_style()
+
+        # Enable/disable Start/Stop controls
+        self._set_start_stop_enabled(self.enabled)
+
+        # LEDs via GPIO_Backend (dummy controller on PC = no-op)
+        if self.gpio_backend is not None:
+            if self.enabled:
+                # ENABLED: green LED ON, red OFF
+                self.gpio_backend.set_green_led(True)
+                self.gpio_backend.set_red_led(False)
+            else:
+                # DISABLED: red LED ON, green OFF
+                self.gpio_backend.set_green_led(False)
+                self.gpio_backend.set_red_led(True)
+
+    def _on_en_pressed(self) -> None:
+        """
+        Toggle enable state when EN button is pressed.
+        """
+        self.enabled = not self.enabled
+        self._apply_enable_state()
+
+        # Optional safety: if disabling while running, force stop
+        if not self.enabled and (self.session_active or self.session_paused):
+            self._on_session_stop_requested()
 
     # ---------------------------------------------------------
     #   Theme support
@@ -479,6 +605,9 @@ class ParamsPage(QWidget):
             self.coil_temp_widget.applyTheme(self.theme_manager, theme_name)
         except Exception as e:
             print("Couldn't apply theme to gauge:", e)
+
+        # Gradient should respect theme colors
+        self._update_bottom_panel_style()
 
     def _on_intensity_changed(self, v: int):
         # Ignore changes that come from REMAINING mode animation
@@ -511,7 +640,7 @@ class ParamsPage(QWidget):
         if self.current_protocol:
             self.current_protocol.intensity_percent_of_mt_init = int(val)
 
-        # NEW: Only visually update gauge + list when in INTENSITY mode
+        # Only visually update gauge + list when in INTENSITY mode
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return
 

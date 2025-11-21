@@ -34,6 +34,7 @@ class Uart_Backend(QObject):
     coilTempFromUc = Signal(float)
     igbtTempFromUc = Signal(float)
     resistorTempFromUc= Signal(float)
+    sw_state_from_uC = Signal(bool)
 
     connectionChanged = Signal(bool)
     errorOccurred = Signal(str)
@@ -76,6 +77,7 @@ class Uart_Backend(QObject):
         self.rx_m.coil_temperature_reading.connect(self._on_coil_temp_from_uc)
         self.rx_m.igbt_temperature_reading.connect(self._on_igbt_temp_from_uc)
         self.rx_m.resistor_temperature_reading.connect(self._on_resistor_temp_from_uc)
+        self.rx_m.uC_SW_state_Reading.connect(self._on_sw_state_from_uc)
 
         # You can still observe raw frames from UARTService if needed:
         # self.uart_s.telemetry_updated.connect(self._on_raw_frame)
@@ -203,6 +205,9 @@ class Uart_Backend(QObject):
 
     def _on_resistor_temp_from_uc(self, temp: float):
         self.resistorTempFromUc.emit(temp)
+
+    def _on_sw_state_from_uc(self, state: bool):
+        self.sw_state_from_uC.emit(state)
 
     # ------------------------------------------------------------------
     #   Debug helpers
