@@ -111,9 +111,6 @@ class UARTManager(QObject):
         if pkt[0] != HEADER_A:
             self.error.emit(f"Header1: {pkt[0]}")
             return False
-        if pkt[1] != HEADER_B:
-            self.error.emit(f"Header2: {pkt[1]}")
-            return False
         return (sum(pkt[: self._frame_len - 1]) & 0xFF) == pkt[self._frame_len - 1]
 
     def _reset(self):

@@ -1,7 +1,6 @@
 from PySide6.QtCore import QObject, Signal
 from config.settings import (
     HEADER_A,
-    HEADER_B,
     UART_TX_SIZE,
     START_STIMULATION,
     STOP_STIMULATION,
