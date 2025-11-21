@@ -164,7 +164,8 @@ class GPIO_Backend(QObject):
         else:
             # PC OR forced mock
             if MockGPIOService is None:
-                raise RuntimeError("MockGPIOService is not available but GPIO is not usable.")
+                #raise RuntimeError("MockGPIOService is not available but GPIO is not usable.")
+                print("Mock not available")
             # Be tolerant of different mock signatures (parent-only vs full kwargs)
             try:
                 self._gpio_svc = MockGPIOService(
