@@ -506,19 +506,17 @@ class ParamsPage(QWidget):
             self.coil_temp_widget.setTemperature(temperature)
 
     def _apply_intensity_from_uc(self, val: int):
-        v = max(0, min(65535, int(val)))
-        v = (v * 100) / 65535
 
         # Always keep protocol's model in sync
         if self.current_protocol:
-            self.current_protocol.intensity_percent_of_mt_init = float(v)
+            self.current_protocol.intensity_percent_of_mt_init = int(val)
 
         # NEW: Only visually update gauge + list when in INTENSITY mode
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return
 
         try:
-            self.intensity_gauge.setValue(v)
+            self.intensity_gauge.setValue(val)
         except Exception:
             pass
 
