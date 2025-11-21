@@ -43,6 +43,10 @@ class ParamsPage(QWidget):
         self.backend: Optional[Uart_Backend] = None
         self.gpio_backend: Optional[GPIO_Backend] = gpio_backend
 
+        # NEW: explicit session state tracking
+        self.session_active: bool = False      # True only when running
+        self.session_paused: bool = False      # True only when paused
+
         # --- Primary widgets ---
         self.intensity_gauge = IntensityGauge(self)
         self.intensity_gauge.valueChanged.connect(self._on_intensity_changed)
@@ -181,16 +185,26 @@ class ParamsPage(QWidget):
     #   Gauge mode helpers
     # ---------------------------------------------------------
     def _enter_remaining_mode(self):
+        """
+        Force gauge into REMAINING mode only if session is
+        running or paused (not while in pure settings mode).
+        """
         try:
-            self.intensity_gauge.setMode(GaugeMode.REMAINING)
+            if self.session_active or self.session_paused:  # NEW
+                self.intensity_gauge.setMode(GaugeMode.REMAINING)
         except Exception:
             pass
 
     def _exit_remaining_mode(self):
+        """
+        Back to INTENSITY only if we are not in a running/paused
+        session anymore (i.e., in settings / idle).
+        """
         try:
-            self.intensity_gauge.setMode(GaugeMode.INTENSITY)
-            if self.current_protocol:
-                self.intensity_gauge.setFromProtocol(self.current_protocol)
+            if not (self.session_active or self.session_paused):  # NEW
+                self.intensity_gauge.setMode(GaugeMode.INTENSITY)
+                if self.current_protocol:
+                    self.intensity_gauge.setFromProtocol(self.current_protocol)
         except Exception:
             pass
 
@@ -203,9 +217,17 @@ class ParamsPage(QWidget):
     ):
         """
         Called from PulseBarsWidget each tick while session is running.
+        Only allowed to affect gauge mode when session is actually
+        running or paused.
         """
         try:
-            self.intensity_gauge.setMode(GaugeMode.REMAINING)
+            if not (self.session_active or self.session_paused):
+                # In pure settings mode: ignore remaining updates
+                return  # NEW
+
+            if self.intensity_gauge.mode() != GaugeMode.REMAINING:
+                self.intensity_gauge.setMode(GaugeMode.REMAINING)
+
             self.intensity_gauge.setRemainingState(
                 remaining_pulses=remaining_pulses,
                 total_pulses=total_pulses,
@@ -392,6 +414,10 @@ class ParamsPage(QWidget):
         state = self.session_controls.get_state()
 
         if state == "Start":
+            # NEW: update session state
+            self.session_active = True
+            self.session_paused = False
+
             if hasattr(self.pulse_widget, "start"):
                 self.pulse_widget.start()
             self.session_controls.set_state(running=True, paused=False)
@@ -400,6 +426,10 @@ class ParamsPage(QWidget):
                 self.backend.start_session()
 
         elif state == "Pause":
+            # NEW: update session state
+            self.session_active = False
+            self.session_paused = True
+
             if hasattr(self.pulse_widget, "pause"):
                 self.pulse_widget.pause()
             self.session_controls.set_state(running=False, paused=True)
@@ -408,6 +438,10 @@ class ParamsPage(QWidget):
                 self.backend.pause_session()
 
     def _on_session_stop_requested(self):
+        # NEW: clear session state
+        self.session_active = False
+        self.session_paused = False
+
         if hasattr(self.pulse_widget, "stop"):
             self.pulse_widget.stop()
         self.session_controls.set_state(running=False, paused=False)
@@ -419,6 +453,10 @@ class ParamsPage(QWidget):
         if hasattr(self.pulse_widget, "pause"):
             self.pulse_widget.pause()
         self.session_controls.set_state(running=False, paused=True)
+
+        # NEW: keep behavior consistent
+        self.session_active = False
+        self.session_paused = True
         self._enter_remaining_mode()
 
     def _on_protocols_list_requested(self):
@@ -443,7 +481,7 @@ class ParamsPage(QWidget):
             print("Couldn't apply theme to gauge:", e)
 
     def _on_intensity_changed(self, v: int):
-        #Ignore changes that come from REMAINING mode animation
+        # Ignore changes that come from REMAINING mode animation
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return
 
@@ -470,10 +508,19 @@ class ParamsPage(QWidget):
     def _apply_intensity_from_uc(self, val: int):
         v = max(0, min(65535, int(val)))
         v = (v * 100) / 65535
+
+        # Always keep protocol's model in sync
+        if self.current_protocol:
+            self.current_protocol.intensity_percent_of_mt_init = float(v)
+
+        # NEW: Only visually update gauge + list when in INTENSITY mode
+        if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
+            return
+
         try:
             self.intensity_gauge.setValue(v)
         except Exception:
             pass
+
         if self.current_protocol:
-            self.current_protocol.intensity_percent_of_mt_init = float(v)
             self._sync_ui_from_protocol()
