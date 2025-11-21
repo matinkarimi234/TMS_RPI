@@ -1,6 +1,6 @@
 from PySide6.QtCore import QObject, Signal
 import serial, threading, time
-from config.settings import HEADER_A, HEADER_B
+from config.settings import HEADER_A
 
 
 class UARTManager(QObject):

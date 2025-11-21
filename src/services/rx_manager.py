@@ -15,19 +15,19 @@ class RxManager(QObject):
 
     def _on_packet(self, packet: bytes):
         # State : IDLE, Single, Start, Run Stimulation, Pause, Stop, Error
-        uC_state = int(packet[2])
+        uC_state = int(packet[1])
 
         # Intensity or MT can change by this encoder BigIndian
-        intensity_Enc = (packet[3] << 8) + (packet[4] << 0)
+        intensity_Enc = (packet[2] << 8) + (packet[3] << 0)
 
         # Reading Temperatures e.g. 23.1
-        coil_temp_i16 = (packet[5] << 8) + (packet[6] << 0)
+        coil_temp_i16 = (packet[4] << 8) + (packet[5] << 0)
         coil_Temperature = round(float(0.1 * coil_temp_i16), 1)
 
-        igbt_temp_i16 = (packet[7] << 8) + (packet[8] << 0)
+        igbt_temp_i16 = (packet[6] << 8) + (packet[7] << 0)
         igbt_Temperature = round(float(0.1 * igbt_temp_i16), 1)
 
-        resistor_temp_i16 = (packet[9] << 8) + (packet[10] << 0)
+        resistor_temp_i16 = (packet[8] << 8) + (packet[9] << 0)
         resistor_Temperature = round(float(0.1 * resistor_temp_i16), 1)
 
 
