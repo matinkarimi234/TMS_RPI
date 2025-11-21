@@ -146,6 +146,17 @@ class Uart_Backend(QObject):
         frame = self.cmd_m.pause_stimulation_command()
         self._next_command_frame = frame
 
+    @Slot()
+    def error_state(self):
+        frame = self.cmd_m.send_error_command()
+        self._next_command_frame = frame
+
+    @Slot()
+    def idle_state(self):
+        frame = self.cmd_m.send_IDLE_command()
+        self._next_command_frame = frame
+    
+
     @Slot(object)
     def apply_protocol(self, proto):
         """

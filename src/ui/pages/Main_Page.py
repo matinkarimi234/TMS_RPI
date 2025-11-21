@@ -52,7 +52,7 @@ class ParamsPage(QWidget):
         self.session_paused: bool = False      # True only when paused
 
         # global enable flag (tied to EN button + LEDs)
-        # False => bottom panel red, start/stop disabled, red LED on
+        # False => bottom panel red, start/stop disabled, intensity locked to 0
         self.enabled: bool = False
 
         # --- Primary widgets ---
@@ -139,6 +139,7 @@ class ParamsPage(QWidget):
         # Initial enable state:
         # - red gradient on bottom panel
         # - Start/Stop disabled
+        # - Intensity = 0 and locked
         # - LEDs (if GPIO) set red
         self._apply_enable_state()
 
@@ -426,6 +427,10 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ---------------------------------------------------------
     def _on_session_start_requested(self):
+        # Ignore any start/pause request if EN is not armed
+        if not self.enabled:
+            return
+
         state = self.session_controls.get_state()
 
         if state == "Start":
@@ -451,6 +456,10 @@ class ParamsPage(QWidget):
                 self.backend.pause_session()
 
     def _on_session_stop_requested(self):
+        # Ignore stop request if EN is not armed
+        if not self.enabled:
+            return
+
         self.session_active = False
         self.session_paused = False
 
@@ -477,7 +486,7 @@ class ParamsPage(QWidget):
         """
         Handler for MT button (both UI and GPIO).
         Implement MT logic here when you know what you want it to do.
-        For now it's just a placeholder.
+        Currently just a stub.
         """
         print("MT requested (not implemented yet)")
 
@@ -553,29 +562,85 @@ class ParamsPage(QWidget):
                 except Exception:
                     pass
 
+    def _update_intensity_for_enable(self, enabled: bool) -> None:
+        """
+        When disabled:
+          - force intensity to 0 in both UI and model
+          - lock the gauge so user can't change it
+          - notify uC about error_state()
+
+        When enabled:
+          - unlock the gauge
+          - notify uC about idle_state()
+          - do NOT change current intensity; it will be driven by user/uC
+        """
+        if enabled:
+            # Inform uC that we are back in idle/armed state
+            if self.backend:
+                try:
+                    self.backend.idle_state()
+                except Exception:
+                    pass
+
+            # Re-arm intensity gauge for user/uC control
+            self.intensity_gauge.setDisabled(False)
+            return
+
+        # Disabled path: clamp everything to 0 and lock
+        if self.backend:
+            try:
+                self.backend.error_state()
+            except Exception:
+                pass
+
+        # Model side
+        if self.current_protocol:
+            self.current_protocol.intensity_percent_of_mt_init = 0
+
+        # UI side
+        try:
+            self.intensity_gauge.setValue(0)
+        except Exception:
+            pass
+
+        self.intensity_gauge.setDisabled(True)
+
+    def _update_leds_for_enable(self, enabled: bool) -> None:
+        """
+        Green LED when enabled, red LED when disabled.
+        On PC with dummy controller this is effectively a no-op.
+        """
+        if not self.gpio_backend:
+            return
+
+        try:
+            self.gpio_backend.set_green_led(enabled)
+            self.gpio_backend.set_red_led(not enabled)
+        except Exception:
+            # never crash UI because of LED I/O
+            pass
+
     def _apply_enable_state(self) -> None:
         """
         Apply current enable/disable state to:
         - bottom gradient (red/green)
-        - Start/Stop buttons (but NOT protocol/theme/MT buttons)
+        - Start/Stop controls (but NOT protocol/theme/MT buttons)
+        - intensity gauge (0 + locked when disabled)
         - GPIO LEDs (if available)
         """
-        # Gradient
+        is_enabled = self.enabled
+
+        # 1) Background gradient
         self._update_bottom_panel_style()
 
-        # Enable/disable Start/Stop controls
-        self._set_start_stop_enabled(self.enabled)
+        # 2) Start/Stop UI state
+        self._set_start_stop_enabled(is_enabled)
 
-        # LEDs via GPIO_Backend (dummy controller on PC = no-op)
-        if self.gpio_backend is not None:
-            if self.enabled:
-                # ENABLED: green LED ON, red OFF
-                self.gpio_backend.set_green_led(True)
-                self.gpio_backend.set_red_led(False)
-            else:
-                # DISABLED: red LED ON, green OFF
-                self.gpio_backend.set_green_led(False)
-                self.gpio_backend.set_red_led(True)
+        # 3) Intensity behavior
+        self._update_intensity_for_enable(is_enabled)
+
+        # 4) LEDs
+        self._update_leds_for_enable(is_enabled)
 
     def _on_en_pressed(self) -> None:
         """
@@ -584,7 +649,7 @@ class ParamsPage(QWidget):
         self.enabled = not self.enabled
         self._apply_enable_state()
 
-        # Optional safety: if disabling while running, force stop
+        # If we just disabled while running, force stop
         if not self.enabled and (self.session_active or self.session_paused):
             self._on_session_stop_requested()
 
@@ -614,6 +679,14 @@ class ParamsPage(QWidget):
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return
 
+        # If EN is not armed, keep intensity at 0 and ignore user changes
+        if not self.enabled:
+            try:
+                self.intensity_gauge.setValue(0)
+            except Exception:
+                pass
+            return
+
         if self.current_protocol:
             self.current_protocol.intensity_percent_of_mt_init = int(v)
             self._sync_ui_from_protocol()
@@ -635,15 +708,33 @@ class ParamsPage(QWidget):
             self.coil_temp_widget.setTemperature(temperature)
 
     def _apply_intensity_from_uc(self, val: int):
+        """
+        Intensity update coming from the microcontroller.
 
-        # Always keep protocol's model in sync
+        - When enabled: track the value normally.
+        - When disabled: force model and UI to 0 and ignore 'val'.
+        """
+
+        # Model side: clamp to 0 if disabled
         if self.current_protocol:
-            self.current_protocol.intensity_percent_of_mt_init = int(val)
+            if self.enabled:
+                self.current_protocol.intensity_percent_of_mt_init = int(val)
+            else:
+                self.current_protocol.intensity_percent_of_mt_init = 0
 
         # Only visually update gauge + list when in INTENSITY mode
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return
 
+        # When disabled, keep UI at 0
+        if not self.enabled:
+            try:
+                self.intensity_gauge.setValue(0)
+            except Exception:
+                pass
+            return
+
+        # Normal path when enabled
         try:
             self.intensity_gauge.setValue(val)
         except Exception:

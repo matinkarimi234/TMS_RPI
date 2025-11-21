@@ -2,9 +2,11 @@ from PySide6.QtCore import QObject, Signal
 from config.settings import (
     HEADER_A,
     UART_TX_SIZE,
+    IDLE,
     START_STIMULATION,
     STOP_STIMULATION,
     PAUSE_STIMULATION,
+    ERROR,
 )
 
 from math import floor
@@ -59,6 +61,34 @@ class CommandManager(QObject):
 
         buff[0] = HEADER_A
         buff[1] = STOP_STIMULATION
+
+        cs = Calculate_Checksum(buff, UART_TX_SIZE)
+        buff[UART_TX_SIZE - 1] = cs
+
+        frame = bytes(buff)
+        self.packet_ready.emit(frame)
+        return frame
+    
+    def send_error_command(self) -> bytes:
+        buff = bytearray(UART_TX_SIZE)
+        Clear_All_Buffers(buff, UART_TX_SIZE)
+
+        buff[0] = HEADER_A
+        buff[1] = ERROR
+
+        cs = Calculate_Checksum(buff, UART_TX_SIZE)
+        buff[UART_TX_SIZE - 1] = cs
+
+        frame = bytes(buff)
+        self.packet_ready.emit(frame)
+        return frame
+    
+    def send_IDLE_command(self) -> bytes:
+        buff = bytearray(UART_TX_SIZE)
+        Clear_All_Buffers(buff, UART_TX_SIZE)
+
+        buff[0] = HEADER_A
+        buff[1] = IDLE
 
         cs = Calculate_Checksum(buff, UART_TX_SIZE)
         buff[UART_TX_SIZE - 1] = cs
