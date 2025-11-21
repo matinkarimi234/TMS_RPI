@@ -457,8 +457,6 @@ class ParamsPage(QWidget):
 
     def _on_session_stop_requested(self):
         # Ignore stop request if EN is not armed
-        if not self.enabled:
-            return
 
         self.session_active = False
         self.session_paused = False
