@@ -11,6 +11,12 @@ from config.settings import (
     ARROW_UP_BUTTON_PIN,
     ARROW_DOWN_BUTTON_PIN,
     START_PAUSE_BUTTON_PIN,
+    EN_BUTTON_PIN,
+    MT_BUTTON_PIN,
+    PROTOCOL_BUTTON_PIN,
+    RESERVED_BUTTON_PIN,
+    STOP_BUTTON_PIN,
+    SINGLE_PULSE_BUTTON_PIN,
 )
 
 # This mock ignores the 'pins', 'encoders', 'controller' arguments,
@@ -22,11 +28,22 @@ class MockGPIOService(QObject):
     """
     Desktop-safe simulation of the real GPIOService.
 
-    - Maps keyboard keys to "pins":
-        ↑  -> ARROW_UP_BUTTON_PIN
-        ↓  -> ARROW_DOWN_BUTTON_PIN
-        Space -> START_PAUSE_BUTTON_PIN
-    - Left / Right arrow keys simulate encoder steps.
+    Keyboard → button mapping:
+
+        ↑           -> ARROW_UP_BUTTON_PIN
+        ↓           -> ARROW_DOWN_BUTTON_PIN
+        Space       -> START_PAUSE_BUTTON_PIN
+        E           -> EN_BUTTON_PIN
+        M           -> MT_BUTTON_PIN
+        R           -> PROTOCOL_BUTTON_PIN
+        Q           -> RESERVED_BUTTON_PIN
+        S           -> STOP_BUTTON_PIN
+        P           -> SINGLE_PULSE_BUTTON_PIN
+
+    Encoder simulation:
+
+        → (Right)   -> encoder_step(0, +1)
+        ← (Left)    -> encoder_step(0, -1)
     """
 
     # mimic real GPIOService signals
@@ -60,6 +77,13 @@ class MockGPIOService(QObject):
             Qt.Key_Up: ARROW_UP_BUTTON_PIN,
             Qt.Key_Down: ARROW_DOWN_BUTTON_PIN,
             Qt.Key_Space: START_PAUSE_BUTTON_PIN,
+
+            Qt.Key_E: EN_BUTTON_PIN,
+            Qt.Key_M: MT_BUTTON_PIN,
+            Qt.Key_R: PROTOCOL_BUTTON_PIN,
+            Qt.Key_Q: RESERVED_BUTTON_PIN,
+            Qt.Key_S: STOP_BUTTON_PIN,
+            Qt.Key_P: SINGLE_PULSE_BUTTON_PIN,
         }
 
         self._last_keys = set()

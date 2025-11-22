@@ -22,7 +22,7 @@ from services.uart_backend import Uart_Backend
 from services.gpio_backend import GPIO_Backend
 from ui.widgets.session_info_widget import SessionInfoWidget
 
-from config.settings import WARNING_TEMPERATURE_THRESHOLD, DANGER_TEMPERATURE_THRESHOLD
+from config.settings import WARNING_TEMPERATURE_THRESHOLD, DANGER_TEMPERATURE_THRESHOLD, HARD_MAX_INTENSITY
 
 
 class ParamsPage(QWidget):
@@ -509,6 +509,11 @@ class ParamsPage(QWidget):
             return 0.0
 
         max_intensity = 10000.0 / mt  # so mt * intensity / 100 <= 100
+
+        # Clamped to 200 Always
+        if max_intensity > HARD_MAX_INTENSITY:
+            max_intensity = HARD_MAX_INTENSITY
+
         if v > max_intensity:
             return max_intensity
         return v
@@ -523,6 +528,9 @@ class ParamsPage(QWidget):
             max_intensity = 0.0
         else:
             max_intensity = 10000.0 / mt
+
+        if max_intensity > HARD_MAX_INTENSITY:
+            max_intensity = HARD_MAX_INTENSITY
 
         try:
             self.intensity_gauge.setRange(0, max_intensity)
