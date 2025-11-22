@@ -64,6 +64,8 @@ class ParamsPage(QWidget):
         # This affects ONLY start/stop interlock, not LEDs/panel visuals.
         self.coil_connected: bool = True
 
+        self._backend_state: Optional[str] = None
+
         # Param list definition: (label, proto_key, unit)
         self.param_definitions = [
             ("Burst Pulses / Burst", "burst_pulses_count", "pulses"),
@@ -183,8 +185,8 @@ class ParamsPage(QWidget):
         # Coil connection state (from uC)
         # True  = coil connected
         # False = coil not connected -> interlock start/stop, send error_state()
-        if hasattr(backend, "uC_SW_state_Reading"):
-            backend.uC_SW_state_Reading.connect(self._on_coil_sw_state)
+        if hasattr(backend, "sw_state_from_uC"):
+            backend.sw_state_from_uC.connect(self._on_coil_sw_state)
 
         # UI -> backend (session control)
         self.session_controls.startRequested.connect(
@@ -573,12 +575,9 @@ class ParamsPage(QWidget):
             except Exception:
                 pass
 
-        # Notify uC if disconnected
-        if not self.coil_connected and self.backend:
-            try:
-                self.backend.error_state()
-            except Exception:
-                pass
+        # Notify uC if disconnected (only once thanks to helper)
+        if not self.coil_connected:
+            self._set_backend_state("error")
 
         # Update Start/Stop enabled state (only, not LEDs/panel)
         self._apply_enable_state()
@@ -655,6 +654,30 @@ class ParamsPage(QWidget):
                 except Exception:
                     pass
 
+    def _set_backend_state(self, state: str) -> None:
+        """
+        Send high-level state to uC only when it actually changes.
+
+        state: "idle" or "error"
+        """
+        if not self.backend:
+            return
+
+        if state == self._backend_state:
+            # No change -> do not resend
+            return
+
+        try:
+            if state == "idle":
+                self.backend.idle_state()
+            elif state == "error":
+                self.backend.error_state()
+        except Exception:
+            # Never let UART errors kill the UI
+            pass
+
+        self._backend_state = state
+
     def _update_intensity_for_enable(self, enabled: bool) -> None:
         """
         When EN is disabled:
@@ -669,21 +692,15 @@ class ParamsPage(QWidget):
         NOTE: coil connection does NOT affect intensity directly.
         """
         if enabled:
-            if self.backend:
-                try:
-                    self.backend.idle_state()
-                except Exception:
-                    pass
+            # was: self.backend.idle_state()
+            self._set_backend_state("idle")
 
             self.intensity_gauge.setDisabled(False)
             return
 
         # Disabled path (EN off)
-        if self.backend:
-            try:
-                self.backend.error_state()
-            except Exception:
-                pass
+        # was: self.backend.error_state()
+        self._set_backend_state("error")
 
         # Model side
         if self.current_protocol:
@@ -696,21 +713,6 @@ class ParamsPage(QWidget):
             pass
 
         self.intensity_gauge.setDisabled(True)
-
-    def _update_leds_for_enable(self, enabled: bool) -> None:
-        """
-        Green LED when EN enabled, red when EN disabled.
-        Coil connection does NOT affect LEDs.
-        """
-        if not self.gpio_backend:
-            return
-
-        try:
-            self.gpio_backend.set_green_led(enabled)
-            self.gpio_backend.set_red_led(not enabled)
-        except Exception:
-            # Never crash UI because of LED I/O
-            pass
 
     def _apply_enable_state(self) -> None:
         """
