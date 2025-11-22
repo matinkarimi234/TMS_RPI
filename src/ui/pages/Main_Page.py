@@ -60,10 +60,12 @@ class ParamsPage(QWidget):
         # Global enable flag (front panel EN button)
         self.enabled: bool = False
 
-        # Coil connection state (from uC_SW_state_Reading)
-        # This affects ONLY start/stop interlock, not LEDs/panel visuals.
+        # Coil connection state (from sw_state_from_uC)
+        # This affects ONLY start/stop interlock, not panel visuals.
         self.coil_connected: bool = True
 
+        # Track last backend "global" state to avoid spamming uC
+        # possible values: None, "idle", "error"
         self._backend_state: Optional[str] = None
 
         # Param list definition: (label, proto_key, unit)
@@ -562,7 +564,7 @@ class ParamsPage(QWidget):
 
         - Update coil temp widget mode
         - If disconnected:
-            * send error_state() to uC
+            * send error_state() to uC (once)
             * disable Start/Stop (via _apply_enable_state)
             * stop running session
         """
@@ -575,11 +577,11 @@ class ParamsPage(QWidget):
             except Exception:
                 pass
 
-        # Notify uC if disconnected (only once thanks to helper)
+        # Notify uC if disconnected (single-shot)
         if not self.coil_connected:
             self._set_backend_state("error")
 
-        # Update Start/Stop enabled state (only, not LEDs/panel)
+        # Update Start/Stop enabled state
         self._apply_enable_state()
 
         # If we just lost the coil while running/paused -> stop session
@@ -587,7 +589,34 @@ class ParamsPage(QWidget):
             self._on_session_stop_requested()
 
     # ------------------------------------------------------------------
-    #   Enable state + gradient + LEDs
+    #   Backend state helper
+    # ------------------------------------------------------------------
+    def _set_backend_state(self, state: str) -> None:
+        """
+        Send high-level state to uC only when it actually changes.
+
+        state: "idle" or "error"
+        """
+        if not self.backend:
+            return
+
+        if state == self._backend_state:
+            # No change -> do not resend
+            return
+
+        try:
+            if state == "idle":
+                self.backend.idle_state()
+            elif state == "error":
+                self.backend.error_state()
+        except Exception:
+            # Never let UART errors kill the UI
+            pass
+
+        self._backend_state = state
+
+    # ------------------------------------------------------------------
+    #   Enable state + gradient
     # ------------------------------------------------------------------
     def _get_theme_color(self, attr_name: str, fallback: str) -> QColor:
         """
@@ -654,30 +683,6 @@ class ParamsPage(QWidget):
                 except Exception:
                     pass
 
-    def _set_backend_state(self, state: str) -> None:
-        """
-        Send high-level state to uC only when it actually changes.
-
-        state: "idle" or "error"
-        """
-        if not self.backend:
-            return
-
-        if state == self._backend_state:
-            # No change -> do not resend
-            return
-
-        try:
-            if state == "idle":
-                self.backend.idle_state()
-            elif state == "error":
-                self.backend.error_state()
-        except Exception:
-            # Never let UART errors kill the UI
-            pass
-
-        self._backend_state = state
-
     def _update_intensity_for_enable(self, enabled: bool) -> None:
         """
         When EN is disabled:
@@ -692,14 +697,13 @@ class ParamsPage(QWidget):
         NOTE: coil connection does NOT affect intensity directly.
         """
         if enabled:
-            # was: self.backend.idle_state()
+            # Send idle once (if changed)
             self._set_backend_state("idle")
 
             self.intensity_gauge.setDisabled(False)
             return
 
-        # Disabled path (EN off)
-        # was: self.backend.error_state()
+        # Disabled path (EN off): send error once
         self._set_backend_state("error")
 
         # Model side
@@ -720,7 +724,6 @@ class ParamsPage(QWidget):
         - bottom gradient (red/green): only EN
         - Start/Stop controls: EN AND coil_connected
         - intensity gauge (0 + locked when EN disabled)
-        - GPIO LEDs (EN only)
         """
         en_enabled = self.enabled
         start_stop_enabled = self.enabled and self.coil_connected
@@ -734,7 +737,7 @@ class ParamsPage(QWidget):
         # 3) Intensity behavior (EN only)
         self._update_intensity_for_enable(en_enabled)
 
-        # 4) LEDs reflect EN only
+        # 4) LEDs (EN only)
         self._update_leds_for_enable(en_enabled)
 
     def _on_en_pressed(self) -> None:
@@ -779,9 +782,7 @@ class ParamsPage(QWidget):
     #   Temperature + intensity from uC
     # ------------------------------------------------------------------
     def set_coil_temperature(self, temperature: float) -> None:
-        # Optional: ignore temperature when coil not connected,
-        # but currently we still pass it to the widget; the widget
-        # decides how to display (DISCONNECTED vs °C).
+        # Currently we always pass it through; widget decides how to show it.
         if hasattr(self, "coil_temp_widget"):
             self.coil_temp_widget.setTemperature(temperature)
 
@@ -847,3 +848,17 @@ class ParamsPage(QWidget):
 
         if self.current_protocol:
             self._sync_ui_from_protocol()
+    def _update_leds_for_enable(self, enabled: bool) -> None:
+            """
+            Green LED when EN enabled, red when EN disabled.
+            Coil connection does NOT affect LEDs.
+            """
+            if not self.gpio_backend:
+                return
+
+            try:
+                self.gpio_backend.set_green_led(enabled)
+                self.gpio_backend.set_red_led(not enabled)
+            except Exception:
+                # Never let LED errors crash the UI
+                pass
