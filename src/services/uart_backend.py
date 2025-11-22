@@ -151,14 +151,19 @@ class Uart_Backend(QObject):
         frame = self.cmd_m.send_error_command()
         self._next_command_frame = frame
 
-    @Slot()
-    def single_pulse_request(self):
-        frame = self.cmd_m.send_single_pulse_command()
+    @Slot(int)
+    def single_pulse_request(self, current_MT):
+        frame = self.cmd_m.send_single_pulse_command(current_MT)
         self._next_command_frame = frame
 
     @Slot()
     def idle_state(self):
         frame = self.cmd_m.send_IDLE_command()
+        self._next_command_frame = frame
+
+    @Slot(int)
+    def mt_state(self, mt_value):
+        frame = self.cmd_m.mt_state(mt_value)
         self._next_command_frame = frame
     
 

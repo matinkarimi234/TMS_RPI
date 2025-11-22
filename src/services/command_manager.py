@@ -8,6 +8,7 @@ from config.settings import (
     PAUSE_STIMULATION,
     ERROR,
     SINGLE_PULSE,
+    MT,
 )
 
 from math import floor
@@ -84,12 +85,13 @@ class CommandManager(QObject):
         self.packet_ready.emit(frame)
         return frame
     
-    def send_single_pulse_command(self) -> bytes:
+    def mt_state(self , mt_value) -> bytes:
         buff = bytearray(UART_TX_SIZE)
         Clear_All_Buffers(buff, UART_TX_SIZE)
 
         buff[0] = HEADER_A
-        buff[1] = SINGLE_PULSE
+        buff[1] = MT
+        buff[2] = int(mt_value)
 
         cs = Calculate_Checksum(buff, UART_TX_SIZE)
         buff[UART_TX_SIZE - 1] = cs
@@ -97,6 +99,22 @@ class CommandManager(QObject):
         frame = bytes(buff)
         self.packet_ready.emit(frame)
         return frame
+    
+    def send_single_pulse_command(self, current_MT) -> bytes:
+        buff = bytearray(UART_TX_SIZE)
+        Clear_All_Buffers(buff, UART_TX_SIZE)
+
+        buff[0] = HEADER_A
+        buff[1] = SINGLE_PULSE
+        buff[2] = int(current_MT)
+
+        cs = Calculate_Checksum(buff, UART_TX_SIZE)
+        buff[UART_TX_SIZE - 1] = cs
+
+        frame = bytes(buff)
+        self.packet_ready.emit(frame)
+        return frame
+        
     
     def send_IDLE_command(self) -> bytes:
         buff = bytearray(UART_TX_SIZE)
