@@ -94,7 +94,6 @@ class ParamsPage(QWidget):
         # --- MT mode state ---
         self.mt_mode: bool = False
         self._session_btn_labels_backup: Dict[str, str] = {}
-        self._mt_signals_hooked: bool = False
 
         # Backup for intensity percentage when entering MT
         self._prev_intensity_percent: Optional[float] = None
@@ -676,7 +675,7 @@ class ParamsPage(QWidget):
 
         In MT mode: send current MT gauge value (not yet committed) to uC:
             backend.single_pulse_request(current_MT)
-        In normal mode: no action (same as previous behaviour).
+        In normal mode: no action.
         """
         if self.mt_mode and self.backend is not None:
             try:
@@ -689,7 +688,7 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ------------------------------------------------------------------
     def _on_session_start_requested(self) -> None:
-        # In MT mode: Start / Pause (both GUI and GPIO) act as "Apply"
+        # In MT mode: Start / Pause (GUI + GPIO) act as "Apply"
         if self.mt_mode:
             self._on_mt_apply()
             return
@@ -722,7 +721,7 @@ class ParamsPage(QWidget):
                 self.backend.pause_session()
 
     def _on_session_stop_requested(self) -> None:
-        # You can optionally map Stop to Cancel in MT mode. For now, ignore.
+        # In MT mode: Stop is ignored (could be mapped to Cancel if you want)
         if self.mt_mode:
             return
 
@@ -739,7 +738,7 @@ class ParamsPage(QWidget):
             self.backend.stop_session()
 
     def _on_protocols_list_requested(self) -> None:
-        # In MT mode: Protocol (both GUI + GPIO) acts as "Cancel"
+        # In MT mode: Protocol (GUI + GPIO) acts as "Cancel"
         if self.mt_mode:
             self._on_mt_cancel()
             return
@@ -823,12 +822,6 @@ class ParamsPage(QWidget):
         sc.theme_frame.hide()
         sc.stop_frame.hide()
 
-        # Hook MT actions using existing FrameButtons/signals (GUI clicks)
-        if not self._mt_signals_hooked:
-            sc.protocolRequested.connect(self._on_mt_cancel)
-            sc.start_pause_frame.clicked.connect(self._on_mt_apply)
-            self._mt_signals_hooked = True
-
         # Disable normal start/stop semantics while in MT
         self._apply_enable_state()
 
@@ -852,18 +845,6 @@ class ParamsPage(QWidget):
         sc.mt_frame.show()
         sc.theme_frame.show()
         sc.stop_frame.show()
-
-        # Unhook MT actions (GUI)
-        if self._mt_signals_hooked:
-            try:
-                sc.protocolRequested.disconnect(self._on_mt_cancel)
-            except Exception:
-                pass
-            try:
-                sc.start_pause_frame.clicked.disconnect(self._on_mt_apply)
-            except Exception:
-                pass
-            self._mt_signals_hooked = False
 
         # Restore previous intensity percent after MT, with dynamic clamp
         if self.current_protocol is not None and self._prev_intensity_percent is not None:
