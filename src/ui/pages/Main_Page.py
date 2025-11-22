@@ -129,7 +129,7 @@ class ParamsPage(QWidget):
         """Wire widgets into layouts."""
         # --- Top layout ---
         top_layout = QHBoxLayout(self.top_panel)
-        top_layout.setContentsMargins(5, 5, 5, 5)
+        top_layout.setContentsMargins(0, 5, 0, 5)
         top_layout.setAlignment(Qt.AlignRight)
 
         # Keep temp widget roughly square-ish
