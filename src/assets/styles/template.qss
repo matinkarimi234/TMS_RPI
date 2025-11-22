@@ -266,3 +266,46 @@ SessionControlWidget QFrame {
     border-radius: 6px;
     padding: 4px 10px;
 }
+
+
+/* SessionInfoWidget styling – match CoilTemperatureWidget look   */
+
+SessionInfoWidget {
+    background-color: {{BACKGROUND_COLOR}};
+    border:           1px solid {{BORDER_COLOR}};
+    border-radius:    6px;
+    color:            {{TEXT_COLOR}};
+    padding:          6px 10px;
+}
+
+/* all labels inside: no extra background rectangles */
+SessionInfoWidget QLabel {
+    background-color: transparent;
+    border: none;
+}
+
+/* Protocol row */
+SessionInfoWidget QLabel#sessionInfoProtocolLabel {
+    font-size:   15px;
+    font-weight: 600;
+    /* color inherits {{TEXT_COLOR}} from global QLabel */
+}
+
+/* USER text: no explicit color, uses default QLabel color */
+SessionInfoWidget QLabel#sessionInfoUserText {
+    font-size: 14px;
+}
+
+/* USER icon – small rounded container like a mini badge */
+SessionInfoWidget QLabel#sessionInfoUserIcon {
+    background-color: {{BACKGROUND_COLOR}};
+    border:           1px solid {{BORDER_COLOR}};
+    border-radius:    10px;   /* 20x20 -> circle */
+}
+
+/* MT row */
+SessionInfoWidget QLabel#sessionInfoMtLabel {
+    font-size:   20px;
+    font-weight: 600;
+    /* color also inherits {{TEXT_COLOR}} */
+}

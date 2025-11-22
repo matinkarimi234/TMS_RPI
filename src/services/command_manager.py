@@ -7,6 +7,7 @@ from config.settings import (
     STOP_STIMULATION,
     PAUSE_STIMULATION,
     ERROR,
+    SINGLE_PULSE,
 )
 
 from math import floor
@@ -75,6 +76,20 @@ class CommandManager(QObject):
 
         buff[0] = HEADER_A
         buff[1] = ERROR
+
+        cs = Calculate_Checksum(buff, UART_TX_SIZE)
+        buff[UART_TX_SIZE - 1] = cs
+
+        frame = bytes(buff)
+        self.packet_ready.emit(frame)
+        return frame
+    
+    def send_single_pulse_command(self) -> bytes:
+        buff = bytearray(UART_TX_SIZE)
+        Clear_All_Buffers(buff, UART_TX_SIZE)
+
+        buff[0] = HEADER_A
+        buff[1] = SINGLE_PULSE
 
         cs = Calculate_Checksum(buff, UART_TX_SIZE)
         buff[UART_TX_SIZE - 1] = cs

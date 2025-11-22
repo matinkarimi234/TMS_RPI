@@ -152,6 +152,11 @@ class Uart_Backend(QObject):
         self._next_command_frame = frame
 
     @Slot()
+    def single_pulse_request(self):
+        frame = self.cmd_m.send_single_pulse_command()
+        self._next_command_frame = frame
+
+    @Slot()
     def idle_state(self):
         frame = self.cmd_m.send_IDLE_command()
         self._next_command_frame = frame

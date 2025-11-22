@@ -1,12 +1,14 @@
 from typing import Optional, Tuple, Any, Dict
 
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
+    QLabel,
+    QStackedLayout,
 )
 
 from app.theme_manager import ThemeManager
@@ -18,6 +20,7 @@ from ui.widgets.temperature_widget import CoilTemperatureWidget
 from ui.widgets.session_control_widget import SessionControlWidget
 from services.uart_backend import Uart_Backend
 from services.gpio_backend import GPIO_Backend
+from ui.widgets.session_info_widget import SessionInfoWidget
 
 from config.settings import WARNING_TEMPERATURE_THRESHOLD, DANGER_TEMPERATURE_THRESHOLD
 
@@ -26,9 +29,18 @@ class ParamsPage(QWidget):
     """
     Main parameter/session page.
 
-    - Edits parameters of the active TMSProtocol
-    - Shows intensity gauge, timing bars, coil temp, session controls
-    - Optionally uses GPIO_Backend (encoder + buttons) as hardware UI
+    Normal mode:
+      - Left: INTENSITY gauge
+      - Center: PulseBarsWidget
+      - Right: parameter list
+      - Bottom: SessionControlWidget (Protocol, MT, Theme, Stop, Start/Pause)
+
+    MT mode:
+      - Center stack switched to MT page:
+          [ MT gauge | image placeholder | text ]
+      - Bottom SessionControlWidget visually becomes:
+          [Cancel ................. Apply]
+        using FrameButtons (no QPushButtons).
     """
 
     request_protocol_list = Signal()
@@ -61,7 +73,6 @@ class ParamsPage(QWidget):
         self.enabled: bool = False
 
         # Coil connection state (from sw_state_from_uC)
-        # This affects ONLY start/stop interlock, not panel visuals.
         self.coil_connected: bool = True
 
         # Track last backend "global" state to avoid spamming uC
@@ -80,6 +91,11 @@ class ParamsPage(QWidget):
             ("Ramp Steps", "ramp_steps", ""),
         ]
 
+        # --- MT mode state ---
+        self.mt_mode: bool = False
+        self._session_btn_labels_backup: Dict[str, str] = {}
+        self._mt_signals_hooked: bool = False
+
         # --- UI construction ---
         self._init_widgets()
         self._build_layout()
@@ -95,7 +111,7 @@ class ParamsPage(QWidget):
     # ------------------------------------------------------------------
     def _init_widgets(self) -> None:
         """Create all main widgets (no layouts here)."""
-        # Main widgets
+        # Main widgets for NORMAL page
         self.intensity_gauge = IntensityGauge(self)
         self.intensity_gauge.valueChanged.connect(self._on_intensity_changed)
 
@@ -106,6 +122,14 @@ class ParamsPage(QWidget):
         self.pulse_widget.sessionRemainingChanged.connect(
             self._update_remaining_gauge
         )
+
+        # Gauge for MT page
+        self.mt_gauge = IntensityGauge(self)
+        self.mt_gauge.setMode(GaugeMode.MT_PERCENT)
+        self.mt_gauge.setTitles("MT", "PERCENT")
+
+        # NEW: top-left session info widget
+        self.session_info = SessionInfoWidget(self)
 
         # Top panel
         self.top_panel = QWidget()
@@ -118,7 +142,7 @@ class ParamsPage(QWidget):
         )
         self.coil_temp_widget.setCoilConnected(False)
 
-        # Bottom panel
+        # Bottom panel + session controls
         self.bottom_panel = QWidget()
         self.bottom_panel.setObjectName("bottom_panel")
         self.bottom_panel.setFixedHeight(50)
@@ -129,40 +153,102 @@ class ParamsPage(QWidget):
         """Wire widgets into layouts."""
         # --- Top layout ---
         top_layout = QHBoxLayout(self.top_panel)
-        top_layout.setContentsMargins(0, 5, 0, 5)
-        top_layout.setAlignment(Qt.AlignRight)
+        top_layout.setContentsMargins(8, 5, 8, 5)
+        top_layout.setSpacing(8)
 
-        # Keep temp widget roughly square-ish
+        # Left: new session info
+        top_layout.addWidget(self.session_info, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+        # Middle: stretch
+        top_layout.addStretch(1)
+
+        # Right: coil temperature widget
         self.coil_temp_widget.setMaximumWidth(
             int(self.coil_temp_widget.height() * 1.4)
         )
-        top_layout.addWidget(self.coil_temp_widget)
+        top_layout.addWidget(self.coil_temp_widget, alignment=Qt.AlignRight | Qt.AlignVCenter)
 
         # --- Bottom row: session controls ---
         bottom_layout = QHBoxLayout(self.bottom_panel)
-        bottom_layout.setContentsMargins(10, 0, 10, 0)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.addStretch(1)
         bottom_layout.addWidget(self.session_controls, alignment=Qt.AlignHCenter)
         bottom_layout.addStretch(1)
 
-        # --- Main content: [Gauge] [PulseBars] [Param list] ---
-        content_layout = QHBoxLayout()
+        # --- NORMAL PAGE content: [Gauge] [PulseBars] [Param list] ---
+        normal_page = QWidget()
+        normal_content_layout = QHBoxLayout(normal_page)
+        normal_content_layout.setContentsMargins(0, 0, 0, 0)
 
         left_col = QVBoxLayout()
         left_col.addWidget(self.intensity_gauge)
-        content_layout.addLayout(left_col, stretch=0)
+        normal_content_layout.addLayout(left_col, stretch=0)
 
-        content_layout.addWidget(self.pulse_widget, stretch=1)
+        normal_content_layout.addWidget(self.pulse_widget, stretch=1)
 
         right_col = QVBoxLayout()
         right_col.addWidget(self.list_widget, stretch=1)
-        content_layout.addLayout(right_col, stretch=1)
+        normal_content_layout.addLayout(right_col, stretch=1)
+
+        # --- MT PAGE content: (gauge(MT), Picture, Text) ---
+        mt_page = self._create_mt_page()
+
+        # --- Central stack: NORMAL (0) / MT (1) ---
+        self.main_stack = QStackedLayout()
+        self.main_stack.addWidget(normal_page)   # index 0
+        self.main_stack.addWidget(mt_page)       # index 1
 
         # --- Assemble page layout ---
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.top_panel)
-        main_layout.addLayout(content_layout, stretch=1)
+        main_layout.addLayout(self.main_stack, stretch=1)
         main_layout.addWidget(self.bottom_panel)
+
+    def _create_mt_page(self) -> QWidget:
+        """
+        MT page content:
+
+            [ mt_gauge | (spacer) | (image + text) ]
+        """
+        page = QWidget()
+        layout = QHBoxLayout(page)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Left: MT gauge
+        left_col = QVBoxLayout()
+        left_col.addWidget(self.mt_gauge)
+        left_col.addStretch(1)
+        layout.addLayout(left_col, stretch=0)
+
+        # Middle: stretch (empty)
+        layout.addStretch(1)
+
+        # Right: picture + text
+        right_col = QVBoxLayout()
+
+        picture = QLabel("Image placeholder", page)
+        picture.setAlignment(Qt.AlignCenter)
+        picture.setFixedSize(220, 220)
+        picture.setStyleSheet(
+            "border: 1px dashed rgba(255, 255, 255, 80); "
+            "color: rgba(255, 255, 255, 160);"
+        )
+
+        text = QLabel(
+            "MT instructions / description\n"
+            "You can replace this with real content later.",
+            page,
+        )
+        text.setWordWrap(True)
+
+        right_col.addWidget(picture)
+        right_col.addSpacing(8)
+        right_col.addWidget(text)
+        right_col.addStretch(1)
+
+        layout.addLayout(right_col, stretch=0)
+
+        return page
 
     def _populate_param_list(self) -> None:
         """Fill the navigation list with parameter rows."""
@@ -186,8 +272,6 @@ class ParamsPage(QWidget):
         backend.coilTempFromUc.connect(self.set_coil_temperature)
 
         # Coil connection state (from uC)
-        # True  = coil connected
-        # False = coil not connected -> interlock start/stop, send error_state()
         if hasattr(backend, "sw_state_from_uC"):
             backend.sw_state_from_uC.connect(self._on_coil_sw_state)
 
@@ -227,28 +311,42 @@ class ParamsPage(QWidget):
         self.intensity_gauge.setFromProtocol(proto)
         self.pulse_widget.set_protocol(proto)
 
-        # Palette / theme
+        # NEW: update header protocol name
+        proto_name = getattr(proto, "name", None) or getattr(proto, "protocol_name", None) or "–"
+        self.session_info.setProtocolName(str(proto_name))
+
+        # NEW: update MT in header if it exists
+        mt_val = 0
+        for attr in ("subject_mt", "mt_percent", "mt_value", "subject_mt_percent_init"):
+            if hasattr(proto, attr):
+                try:
+                    mt_val = int(getattr(proto, attr))
+                except Exception:
+                    mt_val = 0
+                break
+        self.session_info.setMtValue(mt_val)
+
+        # Palette / theme (existing)
         pal = self.theme_manager.generate_palette(self.current_theme)
         self.pulse_widget.setPalette(pal)
         self.intensity_gauge.setPalette(pal)
+        self.mt_gauge.setPalette(pal)
         try:
             self.intensity_gauge.applyTheme(self.theme_manager, self.current_theme)
+            self.mt_gauge.applyTheme(self.theme_manager, self.current_theme)
+            self.coil_temp_widget.applyTheme(self.theme_manager, self.current_theme)
         except Exception:
             pass
 
-        # Initial param sync
         self._sync_ui_from_protocol()
 
-        # Notify backend
         if self.backend is not None:
             self.backend.request_param_update(proto)
 
     # ---- Remaining gauge mode helpers --------------------------------
     def _enter_remaining_mode(self) -> None:
-        """
-        Force gauge into REMAINING mode only when session is
-        running or paused (not while in pure settings mode).
-        """
+        if self.mt_mode:
+            return
         if self.session_active or self.session_paused:
             try:
                 self.intensity_gauge.setMode(GaugeMode.REMAINING)
@@ -256,13 +354,10 @@ class ParamsPage(QWidget):
                 pass
 
     def _exit_remaining_mode(self) -> None:
-        """
-        Back to INTENSITY mode only when we are not in a running/paused
-        session anymore (i.e., settings / idle).
-        """
+        if self.mt_mode:
+            return
         if self.session_active or self.session_paused:
             return
-
         try:
             self.intensity_gauge.setMode(GaugeMode.INTENSITY)
             if self.current_protocol:
@@ -277,12 +372,10 @@ class ParamsPage(QWidget):
         remaining_seconds: float,
         total_seconds: float,
     ) -> None:
-        """
-        Called from PulseBarsWidget each tick while session is running.
-        Only allowed to affect gauge when session is actually running/paused.
-        """
+        if self.mt_mode:
+            return
+
         if not (self.session_active or self.session_paused):
-            # Pure settings mode: ignore remaining updates
             return
 
         try:
@@ -302,7 +395,6 @@ class ParamsPage(QWidget):
     def _get_param_range_for_key(
         self, proto: TMSProtocol, key: str
     ) -> Tuple[float, float]:
-        """Return allowed min/max for a given protocol attribute key."""
         if key == "frequency_hz":
             return proto.FREQ_MIN, proto._calculate_max_frequency_hz()
         if key == "inter_pulse_interval_ms":
@@ -322,10 +414,6 @@ class ParamsPage(QWidget):
         return 0, 1
 
     def _get_current_param_meta(self) -> Tuple[Optional[str], Dict[str, Any]]:
-        """
-        Return (key, meta) for the currently selected param row.
-        key may be None if invalid row.
-        """
         item = self.list_widget.currentItem()
         if not item:
             return None, {}
@@ -334,7 +422,6 @@ class ParamsPage(QWidget):
         return key, meta
 
     def _sync_ui_from_protocol(self) -> None:
-        """Update param list + gauge from current_protocol."""
         if not self.current_protocol:
             return
 
@@ -380,9 +467,15 @@ class ParamsPage(QWidget):
                 row_widget.set_suffix(unit)
 
     def _modify_value(self, delta: float) -> None:
-        """
-        Modify the currently selected parameter by 'delta' encoder steps.
-        """
+        if self.mt_mode:
+            # Encoder adjusts MT gauge value directly
+            cur = int(self.mt_gauge.value())
+            new_val = cur + int(delta)
+            # Clamp to something sane; tweak if you want a different MT range
+            new_val = max(0, min(150, new_val))
+            self.mt_gauge.setValue(new_val)
+            return
+
         if not self.current_protocol:
             return
 
@@ -392,7 +485,6 @@ class ParamsPage(QWidget):
 
         proto = self.current_protocol
 
-        # Lock IPI if single burst
         if key == "inter_pulse_interval_ms" and int(
             getattr(proto, "burst_pulses_count", 0)
         ) == 1:
@@ -411,7 +503,6 @@ class ParamsPage(QWidget):
         except (ValueError, TypeError):
             cur_val = getattr(proto, key, 0.0)
 
-        # Step size per parameter
         if key == "frequency_hz":
             step = 0.1 if cur_val < 1.0 else 1.0
         elif key in ("inter_pulse_interval_ms", "inter_train_interval_s"):
@@ -428,7 +519,6 @@ class ParamsPage(QWidget):
         else:
             step = 1
 
-        # Range checks
         if delta > 0 and cur_val + step > hi:
             return
         if delta < 0 and cur_val - step < lo:
@@ -440,10 +530,8 @@ class ParamsPage(QWidget):
             new_val = round(new_val, 1) if new_val < 1.0 else round(new_val)
 
         new_val = max(lo, min(hi, new_val))
-
         setattr(proto, key, new_val)
 
-        # Re-enforce single-burst IPI if needed
         if key == "burst_pulses_count" and int(proto.burst_pulses_count) == 1:
             proto.inter_pulse_interval_ms = self.IPI_FOR_SINGLE_BURST_MS
 
@@ -456,7 +544,6 @@ class ParamsPage(QWidget):
     #   GPIO backend integration
     # ------------------------------------------------------------------
     def _connect_gpio_backend(self) -> None:
-        """Wire hardware controls (if any)."""
         if not self.gpio_backend:
             return
 
@@ -469,37 +556,37 @@ class ParamsPage(QWidget):
         gb.stopPressed.connect(self._on_session_stop_requested)
         gb.protocolPressed.connect(self._on_protocols_list_requested)
         gb.reservedPressed.connect(self._toggle_theme)
+        gb.singlePulsePressed.connect(self._single_pulse_requested)
         if hasattr(gb, "mtPressed"):
             gb.mtPressed.connect(self._on_mt_requested)
 
-        # EN button toggles global enable/disable
         gb.enPressed.connect(self._on_en_pressed)
 
     def _on_encoder_step_hw(self, step: int) -> None:
         self._modify_value(float(step))
 
     def _on_nav_up(self) -> None:
+        if self.mt_mode:
+            return
         self.list_widget.select_previous()
 
     def _on_nav_down(self) -> None:
+        if self.mt_mode:
+            return
         self.list_widget.select_next()
+
+    def _single_pulse_requested(self) -> None:
+        if self.mt_mode:
+            self.backend.single_pulse_request()
 
     # ------------------------------------------------------------------
     #   Session control handlers
     # ------------------------------------------------------------------
     def _on_session_start_requested(self) -> None:
-        """
-        Handle Start/Pause button (UI + GPIO share this).
+        if self.mt_mode:
+            # In MT page, Start/Pause has been repurposed to "Apply"
+            return
 
-        Logic is driven by SessionControlWidget.get_state():
-        - "Start" -> start session
-        - "Pause" -> pause session
-
-        Interlocks:
-        - EN must be armed (self.enabled)
-        - Coil must be connected (self.coil_connected)
-        """
-        # Ignore any start/pause request if interlocks not satisfied
         if not self.enabled or not self.coil_connected:
             return
 
@@ -528,12 +615,10 @@ class ParamsPage(QWidget):
                 self.backend.pause_session()
 
     def _on_session_stop_requested(self) -> None:
-        """
-        Handle Stop button.
+        if self.mt_mode:
+            # Ignore Stop in MT page
+            return
 
-        Stop is allowed regardless of coil connection, and even if EN
-        is not armed, to make sure we can always kill a session.
-        """
         self.session_active = False
         self.session_paused = False
 
@@ -547,45 +632,158 @@ class ParamsPage(QWidget):
             self.backend.stop_session()
 
     def _on_protocols_list_requested(self) -> None:
+        if self.mt_mode:
+            # Protocol button becomes "Cancel" in MT mode
+            return
         self.request_protocol_list.emit()
 
+    # ------------------------------------------------------------------
+    #   MT mode: enter/exit/apply/cancel
+    # ------------------------------------------------------------------
+    def _enter_mt_mode(self) -> None:
+        if self.mt_mode:
+            return
+
+        self.mt_mode = True
+        self.main_stack.setCurrentIndex(1)  # show MT page
+
+        # Configure MT gauge from protocol (if available)
+        if self.current_protocol is not None:
+            mt_val = 0
+            for attr in ("subject_mt", "mt_percent", "mt_value", "subject_mt_percent_init"):
+                if hasattr(self.current_protocol, attr):
+                    try:
+                        mt_val = int(getattr(self.current_protocol, attr))
+                    except Exception:
+                        mt_val = 0
+                    break
+            self.mt_gauge.setRange(0, 150)
+            self.mt_gauge.setValue(mt_val)
+        else:
+            self.mt_gauge.setRange(0, 150)
+            self.mt_gauge.setValue(0)
+
+        # Back up labels and hide extra buttons
+        sc = self.session_controls
+        self._session_btn_labels_backup = {
+            "protocol": sc.protocol_frame.text(),
+            "mt": sc.mt_frame.text(),
+            "theme": sc.theme_frame.text(),
+            "stop": sc.stop_frame.text(),
+            "start": sc.start_pause_frame.text(),
+        }
+
+        sc.protocol_frame.setText("Cancel")
+        sc.start_pause_frame.setText("Apply")
+
+        sc.mt_frame.hide()
+        sc.theme_frame.hide()
+        sc.stop_frame.hide()
+
+        # Hook MT actions using existing FrameButtons/signals
+        if not self._mt_signals_hooked:
+            # Cancel via Protocol button
+            sc.protocolRequested.connect(self._on_mt_cancel)
+            # Apply via raw click of Start/Pause frame
+            sc.start_pause_frame.clicked.connect(self._on_mt_apply)
+            self._mt_signals_hooked = True
+
+        # Disable start/stop semantics while in MT
+        self._apply_enable_state()
+
+    def _exit_mt_mode(self) -> None:
+        if not self.mt_mode:
+            return
+
+        self.mt_mode = False
+        self.main_stack.setCurrentIndex(0)  # back to normal page
+
+        # Restore labels and buttons
+        sc = self.session_controls
+        if self._session_btn_labels_backup:
+            sc.protocol_frame.setText(self._session_btn_labels_backup.get("protocol", "Protocol"))
+            sc.mt_frame.setText(self._session_btn_labels_backup.get("mt", "MT"))
+            sc.theme_frame.setText(self._session_btn_labels_backup.get("theme", "Toggle Theme"))
+            sc.stop_frame.setText(self._session_btn_labels_backup.get("stop", "Stop"))
+            sc.start_pause_frame.setText(self._session_btn_labels_backup.get("start", "Start"))
+
+        sc.mt_frame.show()
+        sc.theme_frame.show()
+        sc.stop_frame.show()
+
+        # Unhook MT actions
+        if self._mt_signals_hooked:
+            try:
+                sc.protocolRequested.disconnect(self._on_mt_cancel)
+            except Exception:
+                pass
+            try:
+                sc.start_pause_frame.clicked.disconnect(self._on_mt_apply)
+            except Exception:
+                pass
+            self._mt_signals_hooked = False
+
+        # Re-apply enable state for normal session behavior
+        self._apply_enable_state()
+
+    def _on_mt_cancel(self) -> None:
+        self._exit_mt_mode()
+
+
+    def _on_mt_apply(self) -> None:
+        """
+        Take current MT gauge value, store in protocol, and go back.
+        """
+        value = int(self.mt_gauge.value())
+
+        if self.current_protocol is not None:
+            stored = False
+            for attr in ("subject_mt", "mt_percent", "mt_value", "subject_mt_percent_init"):
+                if hasattr(self.current_protocol, attr):
+                    try:
+                        setattr(self.current_protocol, attr, value)
+                        stored = True
+                        break
+                    except Exception:
+                        pass
+
+            if stored and self.backend is not None:
+                try:
+                    self.backend.request_param_update(self.current_protocol)
+                except Exception:
+                    pass
+
+        # NEW: reflect MT in the header widget
+        self.session_info.setMtValue(value)
+
+        self._exit_mt_mode()
+
+        self._exit_mt_mode()
+
     def _on_mt_requested(self) -> None:
-        """
-        Handler for MT button (both UI and GPIO).
-        Implement MT logic here when you know what you want it to do.
-        """
-        print("MT requested (not implemented yet)")
+        """Handler for MT button in SessionControlWidget or GPIO."""
+        # Only allow MT when EN and coil (Sw) are both true
+        if not (self.enabled and self.coil_connected):
+            return
+        self._enter_mt_mode()
 
     # ------------------------------------------------------------------
     #   Coil connection state (from uC)
     # ------------------------------------------------------------------
     def _on_coil_sw_state(self, connected: bool) -> None:
-        """
-        Called when uC reports coil switch state.
-
-        - Update coil temp widget mode
-        - If disconnected:
-            * send error_state() to uC (once)
-            * disable Start/Stop (via _apply_enable_state)
-            * stop running session
-        """
         self.coil_connected = bool(connected)
 
-        # Update the temp widget visual mode (DISCONNECTED / normal)
         if hasattr(self, "coil_temp_widget"):
             try:
                 self.coil_temp_widget.setCoilConnected(self.coil_connected)
             except Exception:
                 pass
 
-        # Notify uC if disconnected (single-shot)
         if not self.coil_connected:
             self._set_backend_state("error")
 
-        # Update Start/Stop enabled state
         self._apply_enable_state()
 
-        # If we just lost the coil while running/paused -> stop session
         if (not self.coil_connected) and (self.session_active or self.session_paused):
             self._on_session_stop_requested()
 
@@ -593,16 +791,10 @@ class ParamsPage(QWidget):
     #   Backend state helper
     # ------------------------------------------------------------------
     def _set_backend_state(self, state: str) -> None:
-        """
-        Send high-level state to uC only when it actually changes.
-
-        state: "idle" or "error"
-        """
         if not self.backend:
             return
 
         if state == self._backend_state:
-            # No change -> do not resend
             return
 
         try:
@@ -611,7 +803,6 @@ class ParamsPage(QWidget):
             elif state == "error":
                 self.backend.error_state()
         except Exception:
-            # Never let UART errors kill the UI
             pass
 
         self._backend_state = state
@@ -620,9 +811,6 @@ class ParamsPage(QWidget):
     #   Enable state + gradient
     # ------------------------------------------------------------------
     def _get_theme_color(self, attr_name: str, fallback: str) -> QColor:
-        """
-        Safely get a QColor from ThemeManager or fallback hex string.
-        """
         try:
             raw = getattr(self.theme_manager, attr_name, fallback)
         except Exception:
@@ -632,11 +820,6 @@ class ParamsPage(QWidget):
         return QColor(str(raw))
 
     def _update_bottom_panel_style(self) -> None:
-        """
-        Set bottom_panel gradient depending on EN (self.enabled),
-        using ThemeManager.NORMAL_COLOR / DANGER_COLOR.
-        Coil connection does NOT affect this.
-        """
         normal_color = self._get_theme_color("NORMAL_COLOR", "#00B75A")
         danger_color = self._get_theme_color("DANGER_COLOR", "#CC4444")
 
@@ -655,12 +838,15 @@ class ParamsPage(QWidget):
         self.bottom_panel.setStyleSheet(css)
 
     def _set_start_stop_enabled(self, enabled: bool) -> None:
-        """
-        Enable/disable ONLY Start/Stop inside SessionControlWidget.
-        Protocol / MT / Theme stay enabled.
-        """
         sc = getattr(self, "session_controls", None)
         if sc is None:
+            return
+
+        # In MT mode, Start/Stop is repurposed as "Apply"; keep it enabled,
+        # but don't allow normal start/stop semantics.
+        if self.mt_mode:
+            sc.stop_frame.setEnabled(False)
+            sc.start_pause_frame.setEnabled(True)
             return
 
         if hasattr(sc, "setStartStopEnabled"):
@@ -670,14 +856,13 @@ class ParamsPage(QWidget):
             except Exception:
                 pass
 
-        # Fallback if SessionControlWidget API changes
-        for attr in ("start_pause_frame", "start_button", "btn_start", "button_start"):
+        for attr in ("start_pause_frame",):
             if hasattr(sc, attr):
                 try:
                     getattr(sc, attr).setEnabled(enabled)
                 except Exception:
                     pass
-        for attr in ("stop_frame", "stop_button", "btn_stop", "button_stop"):
+        for attr in ("stop_frame",):
             if hasattr(sc, attr):
                 try:
                     getattr(sc, attr).setEnabled(enabled)
@@ -685,33 +870,24 @@ class ParamsPage(QWidget):
                     pass
 
     def _update_intensity_for_enable(self, enabled: bool) -> None:
-        """
-        When EN is disabled:
-          - force intensity to 0 in both UI and model
-          - lock the gauge so user can't change it
-          - notify uC about error_state()
+        if self.mt_mode:
+            # In MT mode we just track backend state; MT gauge itself is local
+            if enabled:
+                self._set_backend_state("idle")
+            else:
+                self._set_backend_state("error")
+            return
 
-        When EN is enabled:
-          - unlock the gauge
-          - notify uC about idle_state()
-
-        NOTE: coil connection does NOT affect intensity directly.
-        """
         if enabled:
-            # Send idle once (if changed)
             self._set_backend_state("idle")
-
             self.intensity_gauge.setDisabled(False)
             return
 
-        # Disabled path (EN off): send error once
         self._set_backend_state("error")
 
-        # Model side
         if self.current_protocol:
             self.current_protocol.intensity_percent_of_mt_init = 0
 
-        # UI side
         try:
             self.intensity_gauge.setValue(0)
         except Exception:
@@ -720,33 +896,28 @@ class ParamsPage(QWidget):
         self.intensity_gauge.setDisabled(True)
 
     def _apply_enable_state(self) -> None:
-        """
-        Apply current EN + coil state to:
-        - bottom gradient (red/green): only EN
-        - Start/Stop controls: EN AND coil_connected
-        - intensity gauge (0 + locked when EN disabled)
-        """
         en_enabled = self.enabled
         start_stop_enabled = self.enabled and self.coil_connected
 
-        # 1) Background gradient (EN only)
         self._update_bottom_panel_style()
-
-        # 2) Start/Stop UI state (EN + coil)
         self._set_start_stop_enabled(start_stop_enabled)
-
-        # 3) Intensity behavior (EN only)
         self._update_intensity_for_enable((en_enabled and self.coil_connected))
-
-        # 4) LEDs (EN only)
         self._update_leds_for_enable(en_enabled)
 
+        # MT button enabled only when EN and coil switch (Sw) are both true
+        sc = getattr(self, "session_controls", None)
+        if sc is not None:
+            mt_enabled = self.enabled and self.coil_connected and (not self.mt_mode)
+            sc.mt_frame.setEnabled(mt_enabled)
+
     def _on_en_pressed(self) -> None:
-        """Toggle enable state when EN button is pressed."""
+        if self.mt_mode:
+            # EN is irrelevant during MT configuration
+            return
+
         self.enabled = not self.enabled
         self._apply_enable_state()
 
-        # If we just disabled while running, force stop
         if not self.enabled and (self.session_active or self.session_paused):
             self._on_session_stop_requested()
 
@@ -763,14 +934,15 @@ class ParamsPage(QWidget):
         pal = self.theme_manager.generate_palette(theme_name)
         self.pulse_widget.setPalette(pal)
         self.intensity_gauge.setPalette(pal)
+        self.mt_gauge.setPalette(pal)
 
         try:
             self.intensity_gauge.applyTheme(self.theme_manager, theme_name)
+            self.mt_gauge.applyTheme(self.theme_manager, theme_name)
             self.coil_temp_widget.applyTheme(self.theme_manager, theme_name)
         except Exception as e:
             print("Couldn't apply theme to gauge/coil widget:", e)
 
-        # Gradient should respect theme colors
         self._update_bottom_panel_style()
 
     def _toggle_theme(self) -> None:
@@ -783,23 +955,17 @@ class ParamsPage(QWidget):
     #   Temperature + intensity from uC
     # ------------------------------------------------------------------
     def set_coil_temperature(self, temperature: float) -> None:
-        # Currently we always pass it through; widget decides how to show it.
         if hasattr(self, "coil_temp_widget"):
             self.coil_temp_widget.setTemperature(temperature)
 
     def _on_intensity_changed(self, v: int) -> None:
-        """
-        Intensity changed from UI.
+        if self.mt_mode:
+            # MT gauge is separate; intensity_gauge not interactive in MT page
+            return
 
-        - Ignored in REMAINING mode.
-        - Ignored (and reset to 0) when EN is disabled.
-        Coil connection does NOT affect manual intensity changes.
-        """
-        # Ignore changes that come from REMAINING mode animation
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return
 
-        # If EN is not armed, keep intensity at 0 and ignore user changes
         if not self.enabled:
             try:
                 self.intensity_gauge.setValue(0)
@@ -815,25 +981,19 @@ class ParamsPage(QWidget):
                 self.backend.request_param_update(self.current_protocol)
 
     def _apply_intensity_from_uc(self, val: int) -> None:
-        """
-        Intensity update coming from the microcontroller.
+        if self.mt_mode:
+            # Ignore UC updates while in MT configuration page
+            return
 
-        - When EN enabled: track the value normally.
-        - When EN disabled: force model and UI to 0 and ignore 'val'.
-        Coil connection does NOT affect this; it's purely EN.
-        """
-        # Model side
         if self.current_protocol:
             if self.enabled:
                 self.current_protocol.intensity_percent_of_mt_init = int(val)
             else:
                 self.current_protocol.intensity_percent_of_mt_init = 0
 
-        # Only visually update gauge + list when in INTENSITY mode
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return
 
-        # When EN disabled, keep UI at 0
         if not self.enabled:
             try:
                 self.intensity_gauge.setValue(0)
@@ -841,7 +1001,6 @@ class ParamsPage(QWidget):
                 pass
             return
 
-        # Normal path when EN enabled
         try:
             self.intensity_gauge.setValue(val)
         except Exception:
@@ -849,17 +1008,13 @@ class ParamsPage(QWidget):
 
         if self.current_protocol:
             self._sync_ui_from_protocol()
-    def _update_leds_for_enable(self, enabled: bool) -> None:
-            """
-            Green LED when EN enabled, red when EN disabled.
-            Coil connection does NOT affect LEDs.
-            """
-            if not self.gpio_backend:
-                return
 
-            try:
-                self.gpio_backend.set_green_led(enabled)
-                self.gpio_backend.set_red_led(not enabled)
-            except Exception:
-                # Never let LED errors crash the UI
-                pass
+    def _update_leds_for_enable(self, enabled: bool) -> None:
+        if not self.gpio_backend:
+            return
+
+        try:
+            self.gpio_backend.set_green_led(enabled)
+            self.gpio_backend.set_red_led(not enabled)
+        except Exception:
+            pass
