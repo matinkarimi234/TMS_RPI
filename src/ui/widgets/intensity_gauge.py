@@ -489,7 +489,7 @@ class IntensityGauge(QWidget):
             sub_pt = self._subtitle_point if self._subtitle_point > 0.0 else auto_sub_pt
             f_sub.setPointSizeF(sub_pt)
             p.setFont(f_sub)
-            p.drawText(0, int(cy + s * 0.17), self.width(), 20, Qt.AlignHCenter, self._subtitle)
+            #p.drawText(0, int(cy + s * 0.17), self.width(), 20, Qt.AlignHCenter, self._subtitle)
 
         p.end()
 

@@ -24,6 +24,10 @@ from ui.widgets.session_info_widget import SessionInfoWidget
 
 from config.settings import WARNING_TEMPERATURE_THRESHOLD, DANGER_TEMPERATURE_THRESHOLD, HARD_MAX_INTENSITY
 
+# NEW helpers
+from ui.helpers.session_state import SessionState
+from ui.helpers.gpio_guard import GpioEventGuard
+
 
 class ParamsPage(QWidget):
     """
@@ -64,7 +68,10 @@ class ParamsPage(QWidget):
         self.backend: Optional[Uart_Backend] = None
         self.gpio_backend: Optional[GPIO_Backend] = gpio_backend
 
-        # Explicit session state tracking
+        # Explicit session state machine
+        self.session_state: SessionState = SessionState.IDLE
+
+        # Backwards-compatible flags (kept for other code that might read them)
         self.session_active: bool = False   # True only when running
         self.session_paused: bool = False   # True only when paused
 
@@ -91,11 +98,14 @@ class ParamsPage(QWidget):
         ]
 
         # --- MT mode state ---
-        self.mt_mode: bool = False
+        self.mt_mode: bool = False  # mirrors SessionState.MT_EDIT
         self._session_btn_labels_backup: Dict[str, str] = {}
 
         # Backup for intensity percentage when entering MT
         self._prev_intensity_percent: Optional[float] = None
+
+        # --- GPIO event guard (debounce after MT apply) ---
+        self._gpio_guard = GpioEventGuard(block_ms=250, parent=self)
 
         # --- UI construction ---
         self._init_widgets()
@@ -127,6 +137,7 @@ class ParamsPage(QWidget):
         self.list_widget = NavigationListWidget()
         self.list_widget.setCurrentRow(0)
 
+        # Remaining gauge mode disabled, but we keep connection
         self.pulse_widget.sessionRemainingChanged.connect(
             self._update_remaining_gauge
         )
@@ -136,6 +147,10 @@ class ParamsPage(QWidget):
         self.mt_gauge.setMode(GaugeMode.MT_PERCENT)
         self.mt_gauge.setTitles("MT", "PERCENT")
         self.mt_gauge.setRange(0, 100)
+
+        # Align MT gauge visually with intensity gauge
+        self.mt_gauge.setMinimumSize(self.intensity_gauge.minimumSize())
+        self.mt_gauge.setSizePolicy(self.intensity_gauge.sizePolicy())
 
         # Top-left session info widget
         self.session_info = SessionInfoWidget(self)
@@ -190,7 +205,9 @@ class ParamsPage(QWidget):
         normal_content_layout.setContentsMargins(0, 0, 0, 0)
 
         left_col = QVBoxLayout()
-        left_col.addWidget(self.intensity_gauge)
+        left_col.addStretch(1)
+        left_col.addWidget(self.intensity_gauge, alignment=Qt.AlignCenter)
+        left_col.addStretch(1)
         normal_content_layout.addLayout(left_col, stretch=0)
 
         normal_content_layout.addWidget(self.pulse_widget, stretch=1)
@@ -221,15 +238,16 @@ class ParamsPage(QWidget):
         """
         page = QWidget()
         layout = QHBoxLayout(page)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # Left: MT gauge
         left_col = QVBoxLayout()
-        left_col.addWidget(self.mt_gauge)
+        left_col.addStretch(1)
+        left_col.addWidget(self.mt_gauge, alignment=Qt.AlignCenter)
         left_col.addStretch(1)
         layout.addLayout(left_col, stretch=0)
 
-        # Middle: stretch (empty)
+        # Middle: stretch (empty) – keeps gauge in same horizontal band
         layout.addStretch(1)
 
         # Right: picture + text
@@ -320,15 +338,15 @@ class ParamsPage(QWidget):
         self.intensity_gauge.setFromProtocol(proto)
         self.pulse_widget.set_protocol(proto)
 
-        # NEW: update header protocol name
+        # Update header protocol name
         proto_name = getattr(proto, "name", None) or getattr(proto, "protocol_name", None) or "–"
         self.session_info.setProtocolName(str(proto_name))
 
-        # NEW: update MT in header if it exists, else 0 on first load
+        # Update MT in header
         mt_val = int(self._get_subject_mt_percent())
         self.session_info.setMtValue(mt_val)
 
-        # Palette / theme (existing)
+        # Palette / theme
         pal = self.theme_manager.generate_palette(self.current_theme)
         self.pulse_widget.setPalette(pal)
         self.intensity_gauge.setPalette(pal)
@@ -348,27 +366,14 @@ class ParamsPage(QWidget):
         if self.backend is not None:
             self.backend.request_param_update(proto)
 
-    # ---- Remaining gauge mode helpers --------------------------------
+    # ------------------------------------------------------------------
+    #   Remaining gauge mode helpers (disabled)
+    # ------------------------------------------------------------------
     def _enter_remaining_mode(self) -> None:
-        if self.mt_mode:
-            return
-        if self.session_active or self.session_paused:
-            try:
-                self.intensity_gauge.setMode(GaugeMode.REMAINING)
-            except Exception:
-                pass
+        return
 
     def _exit_remaining_mode(self) -> None:
-        if self.mt_mode:
-            return
-        if self.session_active or self.session_paused:
-            return
-        try:
-            self.intensity_gauge.setMode(GaugeMode.INTENSITY)
-            if self.current_protocol:
-                self.intensity_gauge.setFromProtocol(self.current_protocol)
-        except Exception:
-            pass
+        return
 
     def _update_remaining_gauge(
         self,
@@ -377,26 +382,11 @@ class ParamsPage(QWidget):
         remaining_seconds: float,
         total_seconds: float,
     ) -> None:
-        if self.mt_mode:
-            return
+        return
 
-        if not (self.session_active or self.session_paused):
-            return
-
-        try:
-            if self.intensity_gauge.mode() != GaugeMode.REMAINING:
-                self.intensity_gauge.setMode(GaugeMode.REMAINING)
-
-            self.intensity_gauge.setRemainingState(
-                remaining_pulses=remaining_pulses,
-                total_pulses=total_pulses,
-                remaining_seconds=remaining_seconds,
-                total_seconds=total_seconds,
-            )
-        except Exception:
-            pass
-
-    # ---- Param ranges / sync -----------------------------------------
+    # ------------------------------------------------------------------
+    #   Param ranges / sync
+    # ------------------------------------------------------------------
     def _get_param_range_for_key(
         self, proto: TMSProtocol, key: str
     ) -> Tuple[float, float]:
@@ -505,12 +495,9 @@ class ParamsPage(QWidget):
 
         mt = self._get_subject_mt_percent()
         if mt <= 0:
-            # No MT known → safest is 0
             return 0.0
 
-        max_intensity = 10000.0 / mt  # so mt * intensity / 100 <= 100
-
-        # Clamped to 200 Always
+        max_intensity = 10000.0 / mt
         if max_intensity > HARD_MAX_INTENSITY:
             max_intensity = HARD_MAX_INTENSITY
 
@@ -519,10 +506,6 @@ class ParamsPage(QWidget):
         return v
 
     def _update_intensity_gauge_range(self) -> None:
-        """
-        Update intensity gauge range based on current MT:
-            max_intensity = 10000 / MT
-        """
         mt = self._get_subject_mt_percent()
         if mt <= 0:
             max_intensity = 0.0
@@ -537,11 +520,10 @@ class ParamsPage(QWidget):
         except Exception:
             pass
 
-        # Clamp current protocol intensity to this range
         if self.current_protocol is not None:
             try:
                 cur = float(
-                    getattr(self.current_protocol, "intensity_percent_of_mt_init", 0.0)
+                    getattr(self.current_protocol, "intensity_percent_of_mt", 0.0)
                 )
             except Exception:
                 cur = 0.0
@@ -549,7 +531,8 @@ class ParamsPage(QWidget):
             clamped = self._clamp_intensity_by_mt(cur)
             if clamped != cur:
                 try:
-                    setattr(self.current_protocol, "intensity_percent_of_mt_init", clamped)
+                    self.current_protocol.intensity_percent_of_mt = clamped
+                    self.current_protocol.intensity_percent_of_mt_init = clamped
                 except Exception:
                     pass
 
@@ -562,14 +545,13 @@ class ParamsPage(QWidget):
     #   Value modification (encoder)
     # ------------------------------------------------------------------
     def _modify_value(self, delta: float) -> None:
-        if self.mt_mode:
-            # Encoder adjusts MT gauge value directly (0–100)
+        # MT edit state: encoder adjusts MT gauge directly
+        if self.session_state == SessionState.MT_EDIT:
             cur = int(self.mt_gauge.value())
             new_val = cur + int(delta)
             new_val = max(0, min(100, new_val))
             self.mt_gauge.setValue(new_val)
 
-            # Also update MT streaming value on backend if running
             if self.backend is not None:
                 try:
                     self.backend.mt_state(new_val)
@@ -650,43 +632,36 @@ class ParamsPage(QWidget):
 
         gb = self.gpio_backend
 
-        gb.encoderStep.connect(self._on_encoder_step_hw)
-        gb.arrowUpPressed.connect(self._on_nav_up)
-        gb.arrowDownPressed.connect(self._on_nav_down)
-        gb.startPausePressed.connect(self._on_session_start_requested)
-        gb.stopPressed.connect(self._on_session_stop_requested)
-        gb.protocolPressed.connect(self._on_protocols_list_requested)
-        gb.reservedPressed.connect(self._toggle_theme)
-        gb.singlePulsePressed.connect(self._single_pulse_requested)
+        # Wrap GPIO slots with guard to allow blocking after MT Apply
+        gb.encoderStep.connect(self._gpio_guard.wrap(self._on_encoder_step_hw))
+        gb.arrowUpPressed.connect(self._gpio_guard.wrap(self._on_nav_up))
+        gb.arrowDownPressed.connect(self._gpio_guard.wrap(self._on_nav_down))
+        gb.startPausePressed.connect(self._gpio_guard.wrap(self._on_session_start_requested))
+        gb.stopPressed.connect(self._gpio_guard.wrap(self._on_session_stop_requested))
+        gb.protocolPressed.connect(self._gpio_guard.wrap(self._on_protocols_list_requested))
+        gb.reservedPressed.connect(self._gpio_guard.wrap(self._toggle_theme))
+        gb.singlePulsePressed.connect(self._gpio_guard.wrap(self._single_pulse_requested))
         if hasattr(gb, "mtPressed"):
-            gb.mtPressed.connect(self._on_mt_requested)
+            gb.mtPressed.connect(self._gpio_guard.wrap(self._on_mt_requested))
 
-        gb.enPressed.connect(self._on_en_pressed)
+        gb.enPressed.connect(self._gpio_guard.wrap(self._on_en_pressed))
 
+    # ---------- Original handlers (GUI + GPIO) ------------------------
     def _on_encoder_step_hw(self, step: int) -> None:
         self._modify_value(float(step))
 
     def _on_nav_up(self) -> None:
-        if self.mt_mode:
-            # No param list navigation in MT page
+        if self.session_state == SessionState.MT_EDIT:
             return
         self.list_widget.select_previous()
 
     def _on_nav_down(self) -> None:
-        if self.mt_mode:
-            # No param list navigation in MT page
+        if self.session_state == SessionState.MT_EDIT:
             return
         self.list_widget.select_next()
 
     def _single_pulse_requested(self) -> None:
-        """
-        Hardware 'Single' button.
-
-        In MT mode: send current MT gauge value (not yet committed) to uC:
-            backend.single_pulse_request(current_MT)
-        In normal mode: no action.
-        """
-        if self.mt_mode and self.backend is not None:
+        if self.session_state == SessionState.MT_EDIT and self.backend is not None:
             try:
                 current_mt = int(self.mt_gauge.value())
                 self.backend.single_pulse_request(current_mt)
@@ -694,48 +669,51 @@ class ParamsPage(QWidget):
                 pass
 
     # ------------------------------------------------------------------
-    #   Session control handlers
+    #   Session state helpers (state machine core)
     # ------------------------------------------------------------------
-    def _on_session_start_requested(self) -> None:
-        # In MT mode: Start / Pause (GUI + GPIO) act as "Apply" ONLY
-        if self.mt_mode:
-            self._on_mt_apply()
-            return
+    def _set_session_state(self, new_state: SessionState) -> None:
+        self.session_state = new_state
+        self.mt_mode = (new_state == SessionState.MT_EDIT)
+        self.session_active = (new_state == SessionState.RUNNING)
+        self.session_paused = (new_state == SessionState.PAUSED)
 
+    def _start_session(self) -> None:
         if not self.enabled or not self.coil_connected:
             return
-
-        state = self.session_controls.get_state()
-
-        if state == "Start":
-            self.session_active = True
-            self.session_paused = False
-
-            if hasattr(self.pulse_widget, "start"):
-                self.pulse_widget.start()
-            self.session_controls.set_state(running=True, paused=False)
-            self._enter_remaining_mode()
-            if self.backend:
-                self.backend.start_session()
-
-        elif state == "Pause":
-            self.session_active = False
-            self.session_paused = True
-
-            if hasattr(self.pulse_widget, "pause"):
-                self.pulse_widget.pause()
-            self.session_controls.set_state(running=False, paused=True)
-            self._enter_remaining_mode()
-            if self.backend:
-                self.backend.pause_session()
-
-    def _on_session_stop_requested(self) -> None:
-        # In MT mode: Stop is ignored (could be mapped to Cancel if you want)
-        if self.mt_mode:
+        if self.session_state == SessionState.MT_EDIT:
             return
 
-        self.session_active = False
-        self.session_paused = False
+        self._set_session_state(SessionState.RUNNING)
+
+        if hasattr(self.pulse_widget, "start"):
+            self.pulse_widget.start()
+
+        self.session_controls.set_state(running=True, paused=False)
+        self._enter_remaining_mode()
+
+        if self.backend:
+            self.backend.start_session()
+
+    def _pause_session(self) -> None:
+        if self.session_state != SessionState.RUNNING:
+            return
+
+        self._set_session_state(SessionState.PAUSED)
+
+        if hasattr(self.pulse_widget, "pause"):
+            self.pulse_widget.pause()
+
+        self.session_controls.set_state(running=False, paused=True)
+        self._enter_remaining_mode()
+
+        if self.backend:
+            self.backend.pause_session()
+
+    def _stop_session(self) -> None:
+        if self.session_state == SessionState.MT_EDIT:
+            return
+
+        self._set_session_state(SessionState.IDLE)
 
         if hasattr(self.pulse_widget, "stop"):
             self.pulse_widget.stop()
@@ -746,9 +724,32 @@ class ParamsPage(QWidget):
         if self.backend:
             self.backend.stop_session()
 
+    # ------------------------------------------------------------------
+    #   Session control handlers
+    # ------------------------------------------------------------------
+    def _on_session_start_requested(self) -> None:
+        # MT mode: Start/Pause act as "Apply MT" + idle ONLY
+        if self.session_state == SessionState.MT_EDIT:
+            self._on_mt_apply()
+            self._set_backend_state("idle", force=True)
+            return
+
+        if not self.enabled or not self.coil_connected:
+            return
+
+        if self.session_state in (SessionState.IDLE, SessionState.PAUSED):
+            self._start_session()
+        elif self.session_state == SessionState.RUNNING:
+            self._pause_session()
+
+    def _on_session_stop_requested(self) -> None:
+        if self.session_state == SessionState.MT_EDIT:
+            return
+        self._stop_session()
+
     def _on_protocols_list_requested(self) -> None:
-        # In MT mode: Protocol (GUI + GPIO) acts as "Cancel" ONLY
-        if self.mt_mode:
+        # In MT mode: Protocol acts as Cancel
+        if self.session_state == SessionState.MT_EDIT:
             self._on_mt_cancel()
             return
         self.request_protocol_list.emit()
@@ -757,23 +758,26 @@ class ParamsPage(QWidget):
     #   MT mode: enter/exit/apply/cancel
     # ------------------------------------------------------------------
     def _enter_mt_mode(self) -> None:
-        if self.mt_mode:
+        if self.session_state == SessionState.MT_EDIT:
             return
 
-        self.mt_mode = True
+        if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
+            self._stop_session()
+
+        self._set_session_state(SessionState.MT_EDIT)
         self.main_stack.setCurrentIndex(1)  # show MT page
 
-        # --- Backup and force intensity to 100% while in MT (raw MT) ---
         if self.current_protocol is not None:
             try:
                 self._prev_intensity_percent = float(
-                    getattr(self.current_protocol, "intensity_percent_of_mt_init", 0.0)
+                    getattr(self.current_protocol, "intensity_percent_of_mt", 0.0)
                 )
             except Exception:
                 self._prev_intensity_percent = None
 
             try:
-                setattr(self.current_protocol, "intensity_percent_of_mt_init", 100.0)
+                self.current_protocol.intensity_percent_of_mt = 100.0
+                self.current_protocol.intensity_percent_of_mt_init = 100.0
             except Exception:
                 pass
 
@@ -788,20 +792,17 @@ class ParamsPage(QWidget):
                 except Exception:
                     pass
 
-        # Configure MT gauge from protocol (if available)
         self.mt_gauge.setRange(0, 100)
         mt_val = int(self._get_subject_mt_percent())
         mt_val = max(0, min(100, mt_val))
         self.mt_gauge.setValue(mt_val)
 
-        # Start MT streaming from this value
         if self.backend is not None:
             try:
                 self.backend.mt_state(mt_val)
             except Exception:
                 pass
 
-        # Back up labels and hide extra buttons
         sc = self.session_controls
         self._session_btn_labels_backup = {
             "protocol": sc.protocol_frame.text(),
@@ -818,18 +819,16 @@ class ParamsPage(QWidget):
         sc.theme_frame.hide()
         sc.stop_frame.hide()
 
-        # Disable normal start/stop semantics while in MT
         self._apply_enable_state()
 
     def _exit_mt_mode(self) -> None:
-        if not self.mt_mode:
+        if self.session_state != SessionState.MT_EDIT:
             return
 
-        self.mt_mode = False
+        self._set_session_state(SessionState.IDLE)
         self.intensity_gauge.setValue(0)
         self.main_stack.setCurrentIndex(0)  # back to normal page
 
-        # Restore labels and buttons
         sc = self.session_controls
         if self._session_btn_labels_backup:
             sc.protocol_frame.setText(self._session_btn_labels_backup.get("protocol", "Protocol"))
@@ -842,11 +841,11 @@ class ParamsPage(QWidget):
         sc.theme_frame.show()
         sc.stop_frame.show()
 
-        # Restore previous intensity percent after MT, with dynamic clamp
         if self.current_protocol is not None and self._prev_intensity_percent is not None:
             try:
                 restored = self._clamp_intensity_by_mt(float(self._prev_intensity_percent))
-                setattr(self.current_protocol, "intensity_percent_of_mt_init", restored)
+                self.current_protocol.intensity_percent_of_mt = restored
+                self.current_protocol.intensity_percent_of_mt_init = restored
                 try:
                     self.intensity_gauge.setValue(int(restored))
                 except Exception:
@@ -859,10 +858,8 @@ class ParamsPage(QWidget):
             except Exception:
                 pass
 
-        # Re-apply enable state for normal session behavior
         self._apply_enable_state()
 
-        # Stop MT streaming and force idle command
         if self.backend is not None:
             try:
                 self.backend.set_mt_streaming(False)
@@ -875,11 +872,8 @@ class ParamsPage(QWidget):
         self._exit_mt_mode()
 
     def _on_mt_apply(self) -> None:
-        """
-        Take current MT gauge value, store in protocol, and go back.
-        """
         value = int(self.mt_gauge.value())
-        value = max(0, min(100, value))  # MT itself is 0–100 % MSO
+        value = max(0, min(100, value))
 
         if self.current_protocol is not None:
             stored = False
@@ -898,18 +892,19 @@ class ParamsPage(QWidget):
                 except Exception:
                     pass
 
-            # AFTER MT changes, recompute allowed intensity range
             self._update_intensity_gauge_range()
 
-        # Reflect MT in the header widget
         self.session_info.setMtValue(value)
 
         self._exit_mt_mode()
 
+        # Debounce GPIO events after MT apply
+        self._gpio_guard.block()
+
     def _on_mt_requested(self) -> None:
-        """Handler for MT button in SessionControlWidget or GPIO."""
-        # Only allow MT when EN and coil (Sw) are both true
         if not (self.enabled and self.coil_connected):
+            return
+        if self.session_state != SessionState.IDLE:
             return
         self._enter_mt_mode()
 
@@ -930,17 +925,13 @@ class ParamsPage(QWidget):
 
         self._apply_enable_state()
 
-        if (not self.coil_connected) and (self.session_active or self.session_paused):
-            self._on_session_stop_requested()
+        if (not self.coil_connected) and (self.session_state in (SessionState.RUNNING, SessionState.PAUSED)):
+            self._stop_session()
 
     # ------------------------------------------------------------------
     #   Backend state helper
     # ------------------------------------------------------------------
     def _set_backend_state(self, state: str, force: bool = False) -> None:
-        """
-        state: "idle" or "error"
-        force=True → always send to backend, even if same as last state.
-        """
         if not self.backend:
             return
 
@@ -992,9 +983,7 @@ class ParamsPage(QWidget):
         if sc is None:
             return
 
-        # In MT mode, Start/Stop is repurposed as "Apply"; keep it enabled,
-        # but don't allow normal start/stop semantics.
-        if self.mt_mode:
+        if self.session_state == SessionState.MT_EDIT:
             sc.stop_frame.setEnabled(False)
             sc.start_pause_frame.setEnabled(True)
             return
@@ -1020,8 +1009,7 @@ class ParamsPage(QWidget):
                     pass
 
     def _update_intensity_for_enable(self, enabled: bool) -> None:
-        if self.mt_mode:
-            # In MT mode we just track backend state; MT gauge is visual-only
+        if self.session_state == SessionState.MT_EDIT:
             if enabled:
                 self._set_backend_state("idle")
             else:
@@ -1036,7 +1024,9 @@ class ParamsPage(QWidget):
         self._set_backend_state("error")
 
         if self.current_protocol:
-            self.current_protocol.intensity_percent_of_mt_init = 0.0
+            proto = self.current_protocol
+            proto.intensity_percent_of_mt = 0.0
+            proto.intensity_percent_of_mt_init = 0.0
 
         try:
             self.intensity_gauge.setValue(0)
@@ -1054,24 +1044,17 @@ class ParamsPage(QWidget):
         self._update_intensity_for_enable((en_enabled and self.coil_connected))
         self._update_leds_for_enable(en_enabled)
 
-        # MT button enabled only when EN and coil switch (Sw) are both true
         sc = getattr(self, "session_controls", None)
         if sc is not None:
-            mt_enabled = self.enabled and self.coil_connected and (not self.mt_mode)
+            mt_enabled = self.enabled and self.coil_connected and (self.session_state != SessionState.MT_EDIT)
             sc.mt_frame.setEnabled(mt_enabled)
 
     def _on_en_pressed(self) -> None:
-        if self.mt_mode:
-            # In MT mode we still reflect enable on LEDs / backend state
-            self.enabled = not self.enabled
-            self._apply_enable_state()
-            return
-
         self.enabled = not self.enabled
         self._apply_enable_state()
 
-        if not self.enabled and (self.session_active or self.session_paused):
-            self._on_session_stop_requested()
+        if (not self.enabled) and (self.session_state in (SessionState.RUNNING, SessionState.PAUSED)):
+            self._stop_session()
 
     # ------------------------------------------------------------------
     #   Theme support
@@ -1111,9 +1094,7 @@ class ParamsPage(QWidget):
             self.coil_temp_widget.setTemperature(temperature)
 
     def _on_intensity_changed(self, v: int) -> None:
-        # User changing INTENSITY gauge (normal mode only)
-        if self.mt_mode:
-            # MT gauge is edited by encoder; intensity_gauge is inactive in MT
+        if self.session_state == SessionState.MT_EDIT:
             return
 
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
@@ -1126,7 +1107,6 @@ class ParamsPage(QWidget):
                 pass
             return
 
-        # Clamp based on MT so that MT * intensity / 100 <= 100
         v_f = float(v)
         v_clamped = self._clamp_intensity_by_mt(v_f)
 
@@ -1136,30 +1116,22 @@ class ParamsPage(QWidget):
             pass
 
         if self.current_protocol:
-            self.current_protocol.intensity_percent_of_mt_init = v_clamped
+            proto = self.current_protocol
+            try:
+                proto.intensity_percent_of_mt = v_clamped
+                proto.intensity_percent_of_mt_init = v_clamped
+            except Exception:
+                pass
+
             self._sync_ui_from_protocol()
 
             if self.backend is not None:
-                self.backend.request_param_update(self.current_protocol)
+                self.backend.request_param_update(proto)
 
     def _apply_intensity_from_uc(self, val: int) -> None:
-        """
-        uC -> UI intensity updates.
-
-        - Normal mode:
-            drive intensity_gauge and protocol.intensity_percent_of_mt_init,
-            with dynamic clamp so: MT * intensity / 100 <= 100.
-        - MT mode:
-            show the SAME value (0–100) on mt_gauge (absolute % MSO),
-            and continuously stream it to uC via mt_state.
-        """
-        # --- MT MODE: treat value as absolute % MSO (0–100) ---
-        if self.mt_mode:
+        if self.session_state == SessionState.MT_EDIT:
             v = int(val)
-            if v < 0:
-                v = 0
-            if v > 100:
-                v = 100
+            v = max(0, min(100, v))
 
             if not self.enabled:
                 try:
@@ -1173,25 +1145,25 @@ class ParamsPage(QWidget):
             except Exception:
                 pass
 
-            # Update streaming MT to backend while in MT mode
             if self.backend is not None:
                 try:
                     self.backend.mt_state(v)
                 except Exception:
                     pass
 
-            # No protocol MT update here; _on_mt_apply commits MT
             return
 
-        # --- NORMAL MODE: intensity is % of MT; clamp based on MT ---
         v_f = float(val)
         v_clamped = self._clamp_intensity_by_mt(v_f)
 
         if self.current_protocol:
+            proto = self.current_protocol
             if self.enabled:
-                self.current_protocol.intensity_percent_of_mt_init = v_clamped
+                proto.intensity_percent_of_mt = v_clamped
+                proto.intensity_percent_of_mt_init = v_clamped
             else:
-                self.current_protocol.intensity_percent_of_mt_init = 0.0
+                proto.intensity_percent_of_mt = 0.0
+                proto.intensity_percent_of_mt_init = 0.0
 
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return

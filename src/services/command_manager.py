@@ -163,7 +163,7 @@ class CommandManager(QObject):
         buffer[2] = int(getattr(proto, "burst_pulses_count", 0)) & 0xFF
 
         # Intensity in your chosen encoding
-        buffer[3] = floor(proto.get_absolute_intensity()) & 0xFF  
+        buffer[3] = proto.absolute_intensity & 0xFF
 
         # Frequency * 10 (e.g. 10.0 Hz -> 100)
         freq10 = int(float(getattr(proto, "frequency_hz", 0.0)) * 10.0)

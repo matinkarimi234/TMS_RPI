@@ -610,7 +610,7 @@ class PulseBarsWidget(QWidget):
         self._pulses_per_train = int(getattr(proto, "pulses_per_train", 1))
         self._freq_hz = float(getattr(proto, "frequency_hz", 1.0))
         self._iti_s = float(getattr(proto, "inter_train_interval_s", 0.0))
-        self._amp_label = f"{int(round(getattr(proto, 'intensity_percent_of_mt', 120)))}"
+        self._amp_label = f"{int(round(getattr(proto, 'absolute_intensity', 100)))}"
         self._ipi_ms = float(getattr(proto, "inter_pulse_interval_ms", 0.0))
         self._burst_pulses_count = int(getattr(proto, "burst_pulses_count", 1))
 

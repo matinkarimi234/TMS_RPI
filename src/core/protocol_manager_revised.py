@@ -11,7 +11,7 @@ Key Revision (v7 - UI Blocking Version):
 """
 
 from __future__ import annotations
-import json
+import json, math
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import List, Dict, Any, ClassVar
@@ -68,13 +68,13 @@ class TMSProtocol:
     # --- Class Constants ---
     SUBJECT_MT_MIN: int = 0
     SUBJECT_MT_MAX: int = 100
-    INTENSITY_OF_MT_MIN: int = 1
+    INTENSITY_OF_MT_MIN: int = 0
     INTENSITY_OF_MT_MAX: int = 200
     INTENSITY_ABS_MAX: int = 100  # %MSO absolute max
     FREQ_MIN: float = 0.1
     FREQ_MAX: float = 100.0
     IPI_MIN_HARD: float = 10.0   # ms
-    IPI_MAX_HARD: float = 1000.0 # ms
+    IPI_MAX_HARD: float = 100.0 # ms
     BURST_PULSES_ALLOWED: ClassVar[List[int]] = [1, 2, 3, 4, 5]
 
     # -----------------------------------------------------------------
@@ -180,6 +180,10 @@ class TMSProtocol:
             self.INTENSITY_OF_MT_MIN,
             self._max_intensity_for_current_mt(),
         )
+
+    @property
+    def absolute_intensity(self) -> int:
+        return min(math.floor((self._subject_mt_percent * self._intensity_percent_of_mt) / 100), self.INTENSITY_ABS_MAX)
 
     @property
     def frequency_hz(self) -> float:

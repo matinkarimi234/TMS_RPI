@@ -240,9 +240,9 @@ QLabel#mtSliderValue {
 
 
 IntensityGauge {
-    qproperty-valueScale: 0.90;
-    qproperty-titleScale: 0.85;
-    qproperty-subtitleScale: 0.85;
+    qproperty-valueScale: 1.00;
+    qproperty-titleScale: 1.2;
+    qproperty-subtitleScale: 0.9;
 }
 
 /* CoilTemperatureWidget                                          */
