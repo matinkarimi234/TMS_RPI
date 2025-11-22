@@ -40,7 +40,6 @@ class ParamsPage(QWidget):
           [ MT gauge | image placeholder | text ]
       - Bottom SessionControlWidget visually becomes:
           [Cancel ................. Apply]
-        using FrameButtons (no QPushButtons).
     """
 
     request_protocol_list = Signal()
@@ -688,7 +687,7 @@ class ParamsPage(QWidget):
     #   Session control handlers
     # ------------------------------------------------------------------
     def _on_session_start_requested(self) -> None:
-        # In MT mode: Start / Pause (GUI + GPIO) act as "Apply"
+        # In MT mode: Start / Pause (GUI + GPIO) act as "Apply" ONLY
         if self.mt_mode:
             self._on_mt_apply()
             return
@@ -738,7 +737,7 @@ class ParamsPage(QWidget):
             self.backend.stop_session()
 
     def _on_protocols_list_requested(self) -> None:
-        # In MT mode: Protocol (GUI + GPIO) acts as "Cancel"
+        # In MT mode: Protocol (GUI + GPIO) acts as "Cancel" ONLY
         if self.mt_mode:
             self._on_mt_cancel()
             return
@@ -866,8 +865,8 @@ class ParamsPage(QWidget):
         # Re-apply enable state for normal session behavior
         self._apply_enable_state()
 
-        # Inform backend that MT mode is finished, back to idle state
-        self._set_backend_state("idle")
+        # FORCE idle state to backend (even if already "idle")
+        self._set_backend_state("idle", force=True)
 
     def _on_mt_cancel(self) -> None:
         self._exit_mt_mode()
@@ -934,11 +933,15 @@ class ParamsPage(QWidget):
     # ------------------------------------------------------------------
     #   Backend state helper
     # ------------------------------------------------------------------
-    def _set_backend_state(self, state: str) -> None:
+    def _set_backend_state(self, state: str, force: bool = False) -> None:
+        """
+        state: "idle" or "error"
+        force=True → always send to backend, even if same as last state.
+        """
         if not self.backend:
             return
 
-        if state == self._backend_state:
+        if (state == self._backend_state) and (not force):
             return
 
         try:
