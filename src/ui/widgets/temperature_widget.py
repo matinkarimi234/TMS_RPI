@@ -7,6 +7,7 @@ class CoilTemperatureWidget(QWidget):
     NORMAL = 0
     WARNING = 1
     DANGER = 2
+    DISCONNECTED = 3  # <- NEW
 
     def __init__(self, warning_threshold, danger_threshold, parent=None):
         super().__init__(parent)
@@ -16,6 +17,9 @@ class CoilTemperatureWidget(QWidget):
         self.mode = self.NORMAL
         self.warning_threshold = warning_threshold
         self.danger_threshold = danger_threshold
+
+        # NEW: logical coil connection state
+        self.coil_connected = True
 
         # --- Font sizes controlled via QSS ---
         self._headerFontSize = 16
@@ -30,6 +34,7 @@ class CoilTemperatureWidget(QWidget):
             "NORMAL_COLOR": "#00B060",
             "WARNING_COLOR": "#E6B800",
             "DANGER_COLOR": "#CC3333",
+            "DISCONNECTED_COLOR": "#777777",  # <- NEW gray
         }
 
         self.setMinimumSize(200, 90)
@@ -67,6 +72,7 @@ class CoilTemperatureWidget(QWidget):
             "NORMAL_COLOR": g(theme_name, "CONNECTED_GREEN", "#00CC00"),
             "WARNING_COLOR": g(theme_name, "ACCENT_GRADIENT_END", "#fadb5a"),
             "DANGER_COLOR": g(theme_name, "DISCONNECTED_RED", "#CC0000"),
+            "DISCONNECTED_COLOR": g(theme_name, "COIL_DISCONNECTED", "#777777"),
         }
         self.update()
 
@@ -74,6 +80,16 @@ class CoilTemperatureWidget(QWidget):
     # Logic
     # ------------------------------------------------------------------
     def updateMode(self):
+        """
+        Decide which visual mode we are in.
+
+        If coil is not connected -> DISCONNECTED, independent of temperature.
+        Otherwise use thresholds.
+        """
+        if not self.coil_connected:
+            self.mode = self.DISCONNECTED
+            return
+
         if self.temperature < self.warning_threshold:
             self.mode = self.NORMAL
         elif self.temperature < self.danger_threshold:
@@ -82,7 +98,21 @@ class CoilTemperatureWidget(QWidget):
             self.mode = self.DANGER
 
     def setTemperature(self, value: float):
+        """
+        Update temperature; ignored for mode selection if coil is disconnected
+        (we still store it, but visual mode is based on coil_connected).
+        """
         self.temperature = max(0.0, value)
+        self.updateMode()
+        self.update()
+
+    def setCoilConnected(self, connected: bool):
+        """
+        Public API to set coil connection state.
+
+        connected == False -> DISCONNECTED mode + gray UI + 'Coil not connected'.
+        """
+        self.coil_connected = bool(connected)
         self.updateMode()
         self.update()
 
@@ -91,11 +121,16 @@ class CoilTemperatureWidget(QWidget):
     # ------------------------------------------------------------------
     def paintEvent(self, event):
         c = self._colors
-        mode_color = {
-            self.NORMAL: QColor(c["NORMAL_COLOR"]),
-            self.WARNING: QColor(c["WARNING_COLOR"]),
-            self.DANGER: QColor(c["DANGER_COLOR"]),
-        }[self.mode]
+
+        # Choose color for status bar / text
+        if self.mode == self.NORMAL:
+            mode_color = QColor(c["NORMAL_COLOR"])
+        elif self.mode == self.WARNING:
+            mode_color = QColor(c["WARNING_COLOR"])
+        elif self.mode == self.DANGER:
+            mode_color = QColor(c["DANGER_COLOR"])
+        else:  # DISCONNECTED
+            mode_color = QColor(c["DISCONNECTED_COLOR"])
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -110,74 +145,77 @@ class CoilTemperatureWidget(QWidget):
         bar_height = self.height() * 0.2
         painter.setBrush(mode_color)
         painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(0, self.height() - bar_height,
-                                self.width(), bar_height, 0, 0)
+        painter.drawRoundedRect(
+            0,
+            self.height() - bar_height,
+            self.width(),
+            bar_height,
+            0,
+            0,
+        )
 
         # --- Header label ---
         painter.setPen(QColor(c["TEXT_COLOR_SECONDARY"]))
         header_font = QFont("Tw Cen MT Condensed", self._headerFontSize)
         header_font.setBold(True)
         painter.setFont(header_font)
-        painter.drawText(QRectF(10, self.height() * 0.05, self.width() - 20, self.height() * 0.18),
-                         Qt.AlignLeft | Qt.AlignVCenter,
-                         "COIL TEMPERATURE")
+        painter.drawText(
+            QRectF(10, self.height() * 0.05, self.width() - 20, self.height() * 0.18),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            "COIL TEMPERATURE",
+        )
 
-        # --- Main temperature ---
+        # DISCONNECTED mode: different center text + mode label, no °C
+        if self.mode == self.DISCONNECTED:
+            # Center big “NOT CONNECTED”
+            painter.setPen(QColor(c["TEXT_COLOR"]))
+            temp_font = QFont("Tw Cen MT Condensed", self._tempFontSize)
+            temp_font.setBold(True)
+            painter.setFont(temp_font)
+            painter.drawText(
+                QRectF(10, self.height() * 0.25, self.width() - 20, self.height() * 0.5),
+                Qt.AlignCenter,
+                "COIL\nNOT CONNECTED",
+            )
+
+            # Mode label right side (optional, but nice)
+            painter.setPen(mode_color)
+            mode_font = QFont("Tw Cen MT Condensed", self._modeFontSize, QFont.Bold)
+            painter.setFont(mode_font)
+            painter.drawText(
+                QRectF(0, self.height() * 0.33,
+                       self.width() - 12, self.height() * 0.5),
+                Qt.AlignRight | Qt.AlignVCenter,
+                "DISCONNECTED",
+            )
+            return  # Done painting this mode
+
+        # --- Main temperature (connected path) ---
         painter.setPen(QColor(c["TEXT_COLOR"]))
         temp_font = QFont("Tw Cen MT Condensed", self._tempFontSize)
         temp_font.setBold(True)
         painter.setFont(temp_font)
-        painter.drawText(QRectF(10, self.height() * 0.33, self.width() - 20, self.height() * 0.5),
-                         Qt.AlignLeft | Qt.AlignVCenter,
-                         f"{self.temperature:.1f} °C")
+        painter.drawText(
+            QRectF(10, self.height() * 0.33, self.width() - 20, self.height() * 0.5),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            f"{self.temperature:.1f} °C",
+        )
 
         # --- Mode indicator ---
         painter.setPen(mode_color)
         mode_font = QFont("Tw Cen MT Condensed", self._modeFontSize, QFont.Bold)
         painter.setFont(mode_font)
-        mode_text = {self.NORMAL: "NORMAL", self.WARNING: "WARNING", self.DANGER: "DANGER"}[self.mode]
-        painter.drawText(QRectF(0, self.height() * 0.33,
-                                self.width() - 12, self.height() * 0.5),
-                         Qt.AlignRight | Qt.AlignVCenter,
-                         mode_text)
+        mode_text = {
+            self.NORMAL: "NORMAL",
+            self.WARNING: "WARNING",
+            self.DANGER: "DANGER",
+        }[self.mode]
+        painter.drawText(
+            QRectF(0, self.height() * 0.33,
+                   self.width() - 12, self.height() * 0.5),
+            Qt.AlignRight | Qt.AlignVCenter,
+            mode_text,
+        )
 
     def sizeHint(self):
         return self.minimumSizeHint()
-
-
-from pathlib import Path
-import sys
-ROOT = Path(__file__).parent.parent.parent.parent
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
-from app.theme_manager import ThemeManager
-from PySide6.QtGui import QFontDatabase, QFont
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-
-    font_dir = SRC / "assets/fonts/Tw-Cen-MT-Condensed.ttf"
-    font_id = QFontDatabase.addApplicationFont(str(font_dir))
-    fam = QFontDatabase.applicationFontFamilies(font_id)
-    if fam:
-        app.setFont(QFont(fam[0]))
-
-    # Initialize theme manager
-    tm = ThemeManager(Path(SRC / "assets" / "styles" / "template.qss"), Path(SRC / "config"))
-
-    win = QWidget()
-    layout = QVBoxLayout(win)
-
-    coil_temp = CoilTemperatureWidget(warning_threshold=30, danger_threshold=40)
-    layout.addWidget(coil_temp)
-
-    # apply dark theme via ThemeManager
-    tm.apply(theme_name="light", app=app, stylesheet_target=win, also_call_applyTheme_on=win)
-
-    coil_temp.setTemperature(20)
-
-    win.resize(70, 50)
-    win.show()
-    sys.exit(app.exec())
