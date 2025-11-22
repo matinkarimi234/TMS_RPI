@@ -837,7 +837,7 @@ class ParamsPage(QWidget):
             return
 
         self.mt_mode = False
-        self.intensity_gauge.value(0)
+        self.intensity_gauge.setValue(0)
         self.main_stack.setCurrentIndex(0)  # back to normal page
 
         # Restore labels and buttons
