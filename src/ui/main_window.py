@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
         # --------------------------------------------------------------
 
         # ---------------- GPIO backend (single instance) --------------
-        self.gpio_backend = GPIO_Backend(use_mock=True, parent=self)
+        self.gpio_backend = GPIO_Backend(use_mock=False, parent=self)
         # Optional logging
         self.gpio_backend.errorOccurred.connect(self._on_gpio_error)
         self.gpio_backend.ready.connect(self._on_gpio_ready)

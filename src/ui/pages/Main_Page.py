@@ -735,7 +735,7 @@ class ParamsPage(QWidget):
         self._set_start_stop_enabled(start_stop_enabled)
 
         # 3) Intensity behavior (EN only)
-        self._update_intensity_for_enable(en_enabled)
+        self._update_intensity_for_enable((en_enabled and self.coil_connected))
 
         # 4) LEDs (EN only)
         self._update_leds_for_enable(en_enabled)
