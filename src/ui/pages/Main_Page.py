@@ -1179,9 +1179,9 @@ class ParamsPage(QWidget):
 
         if self.current_protocol:
             if self.enabled:
-                self.current_protocol.intensity_percent_of_mt_init = v_clamped
+                self.current_protocol.intensity_percent_of_mt = v_clamped
             else:
-                self.current_protocol.intensity_percent_of_mt_init = 0.0
+                self.current_protocol.intensity_percent_of_mt = 0.0
 
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return
