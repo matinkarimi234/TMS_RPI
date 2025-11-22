@@ -102,6 +102,9 @@ class ParamsPage(QWidget):
         self._build_layout()
         self._populate_param_list()
 
+        # Initial MT shown in header = 0
+        self.session_info.setMtValue(0)
+
         # --- Initial visual / logic state ---
         self._apply_enable_state()
         self._apply_theme_to_app(self.current_theme)
@@ -115,7 +118,6 @@ class ParamsPage(QWidget):
         # Main widgets for NORMAL page
         self.intensity_gauge = IntensityGauge(self)
         self.intensity_gauge.valueChanged.connect(self._on_intensity_changed)
-        # Temporary default, will be updated based on MT
         try:
             self.intensity_gauge.setRange(0, 100)
         except Exception:
@@ -129,11 +131,11 @@ class ParamsPage(QWidget):
             self._update_remaining_gauge
         )
 
-        # Gauge for MT page
+        # Gauge for MT page (0–100 % MSO)
         self.mt_gauge = IntensityGauge(self)
         self.mt_gauge.setMode(GaugeMode.MT_PERCENT)
         self.mt_gauge.setTitles("MT", "PERCENT")
-        self.mt_gauge.setRange(0, 100)  # MT always absolute 0–100%
+        self.mt_gauge.setRange(0, 100)
 
         # Top-left session info widget
         self.session_info = SessionInfoWidget(self)
@@ -322,15 +324,8 @@ class ParamsPage(QWidget):
         proto_name = getattr(proto, "name", None) or getattr(proto, "protocol_name", None) or "–"
         self.session_info.setProtocolName(str(proto_name))
 
-        # NEW: update MT in header if it exists
-        mt_val = 0
-        for attr in ("subject_mt_percent", "subject_mt", "mt_percent", "mt_value", "subject_mt_percent_init"):
-            if hasattr(proto, attr):
-                try:
-                    mt_val = int(getattr(proto, attr))
-                except Exception:
-                    mt_val = 0
-                break
+        # NEW: update MT in header if it exists, else 0 on first load
+        mt_val = int(self._get_subject_mt_percent())
         self.session_info.setMtValue(mt_val)
 
         # Palette / theme (existing)
@@ -565,6 +560,13 @@ class ParamsPage(QWidget):
             new_val = cur + int(delta)
             new_val = max(0, min(100, new_val))
             self.mt_gauge.setValue(new_val)
+
+            # Also update MT streaming value on backend if running
+            if self.backend is not None:
+                try:
+                    self.backend.mt_state(new_val)
+                except Exception:
+                    pass
             return
 
         if not self.current_protocol:
@@ -678,7 +680,7 @@ class ParamsPage(QWidget):
         """
         if self.mt_mode and self.backend is not None:
             try:
-                current_mt = float(self.mt_gauge.value())
+                current_mt = int(self.mt_gauge.value())
                 self.backend.single_pulse_request(current_mt)
             except Exception:
                 pass
@@ -767,7 +769,6 @@ class ParamsPage(QWidget):
             except Exception:
                 pass
 
-            # Also show 100% on intensity gauge (even if visually hidden)
             try:
                 self.intensity_gauge.setValue(100)
             except Exception:
@@ -781,26 +782,14 @@ class ParamsPage(QWidget):
 
         # Configure MT gauge from protocol (if available)
         self.mt_gauge.setRange(0, 100)
+        mt_val = int(self._get_subject_mt_percent())
+        mt_val = max(0, min(100, mt_val))
+        self.mt_gauge.setValue(mt_val)
 
-        if self.current_protocol is not None:
-            mt_val = 0
-            for attr in ("subject_mt_percent", "subject_mt", "mt_percent", "mt_value", "subject_mt_percent_init"):
-                if hasattr(self.current_protocol, attr):
-                    try:
-                        mt_val = int(getattr(self.current_protocol, attr))
-                    except Exception:
-                        mt_val = 0
-                    break
-            mt_val = max(0, min(100, mt_val))
-            self.mt_gauge.setValue(mt_val)
-        else:
-            self.mt_gauge.setValue(0)
-
-        # Inform backend that we are in MT state with current protocol MT value
+        # Start MT streaming from this value
         if self.backend is not None:
             try:
-                mt_for_uc = self._get_subject_mt_percent()
-                self.backend.mt_state(mt_for_uc)
+                self.backend.mt_state(mt_val)
             except Exception:
                 pass
 
@@ -865,7 +854,13 @@ class ParamsPage(QWidget):
         # Re-apply enable state for normal session behavior
         self._apply_enable_state()
 
-        # FORCE idle state to backend (even if already "idle")
+        # Stop MT streaming and force idle command
+        if self.backend is not None:
+            try:
+                self.backend.set_mt_streaming(False)
+            except Exception:
+                pass
+
         self._set_backend_state("idle", force=True)
 
     def _on_mt_cancel(self) -> None:
@@ -1148,7 +1143,7 @@ class ParamsPage(QWidget):
             with dynamic clamp so: MT * intensity / 100 <= 100.
         - MT mode:
             show the SAME value (0–100) on mt_gauge (absolute % MSO),
-            but DO NOT write MT into the protocol here (that happens only on Apply).
+            and continuously stream it to uC via mt_state.
         """
         # --- MT MODE: treat value as absolute % MSO (0–100) ---
         if self.mt_mode:
@@ -1170,6 +1165,13 @@ class ParamsPage(QWidget):
             except Exception:
                 pass
 
+            # Update streaming MT to backend while in MT mode
+            if self.backend is not None:
+                try:
+                    self.backend.mt_state(v)
+                except Exception:
+                    pass
+
             # No protocol MT update here; _on_mt_apply commits MT
             return
 
@@ -1179,9 +1181,9 @@ class ParamsPage(QWidget):
 
         if self.current_protocol:
             if self.enabled:
-                self.current_protocol.intensity_percent_of_mt = v_clamped
+                self.current_protocol.intensity_percent_of_mt_init = v_clamped
             else:
-                self.current_protocol.intensity_percent_of_mt = 0.0
+                self.current_protocol.intensity_percent_of_mt_init = 0.0
 
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
             return

@@ -23,9 +23,9 @@ class Uart_Backend(QObject):
     PC/RPi is the **master** now:
 
     - Every 125 ms we send ONE frame on UART.
-      * If a start/stop/pause command is pending → we send that frame.
-      * Otherwise, we send the latest 'set params' frame.
-    - RX is still handled by RxManager as before.
+      * If a command is pending → we send that frame.
+      * Else, if MT streaming is enabled → we send mt_state(mt_value).
+      * Else, we send the latest 'set params' frame.
     """
 
     # ---- signals to UI (from uC via RxManager) ----
@@ -33,7 +33,7 @@ class Uart_Backend(QObject):
     intensityFromUc = Signal(int)
     coilTempFromUc = Signal(float)
     igbtTempFromUc = Signal(float)
-    resistorTempFromUc= Signal(float)
+    resistorTempFromUc = Signal(float)
     sw_state_from_uC = Signal(bool)
 
     connectionChanged = Signal(bool)
@@ -68,6 +68,10 @@ class Uart_Backend(QObject):
         self._last_params_frame: Optional[bytes] = None
         self._next_command_frame: Optional[bytes] = None
 
+        # MT streaming state
+        self._mt_streaming: bool = False
+        self._mt_current_value: Optional[int] = 0  # default 0 at startup
+
         # ---- wiring: RX side ----
         self.uart_s.connection_status_changed.connect(self.connectionChanged)
         self.uart_s.error.connect(self.errorOccurred)
@@ -79,10 +83,7 @@ class Uart_Backend(QObject):
         self.rx_m.resistor_temperature_reading.connect(self._on_resistor_temp_from_uc)
         self.rx_m.uC_SW_state_Reading.connect(self._on_sw_state_from_uc)
 
-        # You can still observe raw frames from UARTService if needed:
-        # self.uart_s.telemetry_updated.connect(self._on_raw_frame)
-
-        # ---- wiring: we keep packet_ready for debug but backend decides when to send ----
+        # Debug hook for CommandManager
         self.cmd_m.packet_ready.connect(self._on_cmd_packet_ready_debug)
 
         # ---- TX scheduler: 125 ms master tick ----
@@ -113,7 +114,7 @@ class Uart_Backend(QObject):
 
         - We store the protocol.
         - We build a fresh 'set params' frame.
-        - That frame is then sent every 125 ms (unless a command overrides).
+        - That frame is then sent every 125 ms (unless a command or MT overrides).
         """
         self._current_proto = proto
         if proto is None:
@@ -121,18 +122,13 @@ class Uart_Backend(QObject):
             return
 
         self._last_params_frame = self.cmd_m.build_set_params(proto)
-        # Optionally also send once immediately on update:
-        # self._send_packet(self._last_params_frame)
+        # (Optional) could send once immediately here if you want.
 
     # ------------------------------------------------------------------
     #   Commands from UI
     # ------------------------------------------------------------------
     @Slot()
     def start_session(self):
-        """
-        Queue a start command to be sent on the next 125 ms tick.
-        That tick will send ONLY the command (no params).
-        """
         frame = self.cmd_m.start_stimulation_command()
         self._next_command_frame = frame
 
@@ -152,20 +148,46 @@ class Uart_Backend(QObject):
         self._next_command_frame = frame
 
     @Slot(int)
-    def single_pulse_request(self, current_MT):
+    def single_pulse_request(self, current_MT: int):
+        """
+        One-shot single-pulse command with current MT value.
+        Higher priority than MT streaming (next tick).
+        """
         frame = self.cmd_m.send_single_pulse_command(current_MT)
         self._next_command_frame = frame
 
     @Slot()
     def idle_state(self):
+        """
+        One-shot idle command. Does NOT affect MT streaming flag.
+        Used by UI as a “go back to idle” command.
+        """
         frame = self.cmd_m.send_IDLE_command()
         self._next_command_frame = frame
 
+    # ---- MT streaming control ----------------------------------------
     @Slot(int)
-    def mt_state(self, mt_value):
-        frame = self.cmd_m.mt_state(mt_value)
-        self._next_command_frame = frame
-    
+    def mt_state(self, mt_value: int):
+        """
+        MT streaming entry/update.
+
+        - Stores mt_value.
+        - Enables MT streaming mode.
+        Then, every 125 ms, _on_tx_tick will send mt_state(mt_value)
+        instead of the regular params frame, until MT streaming is disabled.
+        """
+        self._mt_current_value = int(mt_value)
+        self._mt_streaming = True
+
+    @Slot(bool)
+    def set_mt_streaming(self, enable: bool):
+        """
+        Enable/disable continuous MT streaming.
+
+        - When True: _on_tx_tick sends mt_state(mt_value) each tick.
+        - When False: _on_tx_tick goes back to sending params frames.
+        """
+        self._mt_streaming = bool(enable)
 
     @Slot(object)
     def apply_protocol(self, proto):
@@ -182,15 +204,22 @@ class Uart_Backend(QObject):
         Called every 125 ms.
         Priority:
         1) If there is a queued command frame -> send it, clear, return.
-        2) Else, if we have a params frame -> send that.
+        2) Else, if MT streaming is enabled -> send mt_state(current_MT).
+        3) Else, if we have a params frame -> send that.
         """
-        # send command if pending
+        # 1) send command if pending
         if self._next_command_frame is not None:
             self._send_packet(self._next_command_frame)
             self._next_command_frame = None
             return
 
-        # otherwise send latest params frame
+        # 2) MT streaming mode
+        if self._mt_streaming and (self._mt_current_value is not None):
+            frame = self.cmd_m.mt_state(int(self._mt_current_value))
+            self._send_packet(frame)
+            return
+
+        # 3) otherwise send latest params frame
         if self._last_params_frame is not None:
             self._send_packet(self._last_params_frame)
 
@@ -202,9 +231,6 @@ class Uart_Backend(QObject):
     # ------------------------------------------------------------------
     #   RX handlers
     # ------------------------------------------------------------------
-    # def _on_raw_frame(self, pkt: bytes):
-    #     print("[UART RX RAW]", pkt.hex(" "))
-
     def _on_state_from_uc(self, val: int):
         # map uC state code to enum if you like
         if val == 0:
@@ -234,6 +260,5 @@ class Uart_Backend(QObject):
     #   Debug helpers
     # ------------------------------------------------------------------
     def _on_cmd_packet_ready_debug(self, frame: bytes):
-        # Just a hook if you want to log what CommandManager generates:
         print("[CMD FRAME]", frame.hex(" "))
         pass

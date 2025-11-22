@@ -1,7 +1,7 @@
 [
   {
     "name": "iTBS_Standard",
-    "subject_mt_percent_init": 50.0,
+    "subject_mt_percent_init": 0.0,
     "intensity_percent_of_mt_init": 80.0,
     "frequency_hz_init": 5.0,
     "pulses_per_train": 30,
@@ -17,7 +17,7 @@
   },
   {
     "name": "cTBS_Standard",
-    "subject_mt_percent_init": 55.0,
+    "subject_mt_percent_init": 0.0,
     "intensity_percent_of_mt_init": 80.0,
     "frequency_hz_init": 5.0,
     "pulses_per_train": 600,
@@ -33,7 +33,7 @@
   },
   {
     "name": "rTMS_10Hz_depression",
-    "subject_mt_percent_init": 5.0,
+    "subject_mt_percent_init": 0.0,
     "intensity_percent_of_mt_init": 110.0,
     "frequency_hz_init": 10.0,
     "pulses_per_train": 100,
@@ -49,7 +49,7 @@
   },
   {
     "name": "rTMS_1Hz_inhibitory",
-    "subject_mt_percent_init": 5.0,
+    "subject_mt_percent_init": 0.0,
     "intensity_percent_of_mt_init": 90.0,
     "frequency_hz_init": 1.0,
     "pulses_per_train": 600,
@@ -65,7 +65,7 @@
   },
   {
     "name": "rTMS_20Hz_executive",
-    "subject_mt_percent_init": 5.0,
+    "subject_mt_percent_init": 0.0,
     "intensity_percent_of_mt_init": 120.0,
     "frequency_hz_init": 20.0,
     "pulses_per_train": 40,
