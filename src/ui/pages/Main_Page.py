@@ -116,6 +116,7 @@ class ParamsPage(QWidget):
             warning_threshold=WARNING_TEMPERATURE_THRESHOLD,
             danger_threshold=DANGER_TEMPERATURE_THRESHOLD,
         )
+        self.coil_temp_widget.setCoilConnected(False)
 
         # Bottom panel
         self.bottom_panel = QWidget()

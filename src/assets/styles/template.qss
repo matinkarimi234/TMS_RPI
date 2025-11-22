@@ -256,6 +256,12 @@ CoilTemperatureWidget {
     qproperty-modeFontSize: 15;
 }
 
+CoilTemperatureWidget[state="disconnected"] {
+    qproperty-headerFontSize: 10;  /* header hidden anyway, but fine */
+    qproperty-tempFontSize: 20;
+    qproperty-modeFontSize: 10;
+}
+
 SessionControlWidget QFrame {
     border-radius: 6px;
     padding: 4px 10px;
