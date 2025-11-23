@@ -1237,7 +1237,7 @@ class ParamsPage(QWidget):
                 proto.intensity_percent_of_mt = 0.0
                 proto.intensity_percent_of_mt_init = 0.0
 
-        if self.intensity_gauge.mode() != GaugeMode.INTENSITY and self._uC_State != 1: # Set Parameters
+        if self.intensity_gauge.mode() != GaugeMode.INTENSITY or self._uC_State == 7: # Not MT
             return
 
         if not self.enabled:
