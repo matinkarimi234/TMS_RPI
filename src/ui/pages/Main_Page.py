@@ -817,7 +817,7 @@ class ParamsPage(QWidget):
             if self.backend is not None:
                 try:
                     self.backend.mt_state(mt_val)
-                    #self.backend.request_param_update(self.current_protocol)
+                    self.backend.request_param_update(self.current_protocol)
                 except Exception:
                     pass
 
