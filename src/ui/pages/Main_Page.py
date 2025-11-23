@@ -1043,11 +1043,20 @@ class ParamsPage(QWidget):
         self._set_start_stop_enabled(start_stop_enabled)
         self._update_intensity_for_enable((en_enabled and self.coil_connected))
         self._update_leds_for_enable(en_enabled)
+        self._force_mt_at_disable(start_stop_enabled)
+
+        
 
         sc = getattr(self, "session_controls", None)
         if sc is not None:
             mt_enabled = self.enabled and self.coil_connected and (self.session_state != SessionState.MT_EDIT)
             sc.mt_frame.setEnabled(mt_enabled)
+
+
+    def _force_mt_at_disable(self, en : bool):
+        if not en and self.current_protocol:
+            self.current_protocol.subject_mt_percent = 0
+            self.set_protocol(self.current_protocol)
 
     def _on_en_pressed(self) -> None:
         self.enabled = not self.enabled
