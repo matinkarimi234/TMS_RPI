@@ -1176,14 +1176,15 @@ class ParamsPage(QWidget):
                 self.backend.request_param_update(proto)
 
     def _manage_state_from_uc(self, val: int):
-        if val == uC_State.SET_PARAMETERS:
-            self._set_session_state(SessionState.IDLE)
+        if self.session_state == SessionState.RUNNING or self.session_state == SessionState.PAUSED:
+            if val == uC_State.SET_PARAMETERS:
+                self._set_session_state(SessionState.IDLE)
 
-            if hasattr(self.pulse_widget, "stop"):
-                self.pulse_widget.stop()
+                if hasattr(self.pulse_widget, "stop"):
+                    self.pulse_widget.stop()
 
-            self.session_controls.set_state(running=False, paused=False)
-            self._exit_remaining_mode()
+                self.session_controls.set_state(running=False, paused=False)
+                self._exit_remaining_mode()
 
 
 
