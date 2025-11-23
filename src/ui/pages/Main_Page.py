@@ -81,6 +81,8 @@ class ParamsPage(QWidget):
         # Global enable flag (front panel EN button)
         self.enabled: bool = False
 
+        self.system_enabled: bool = False
+
         # Coil connection state (from sw_state_from_uC)
         self.coil_connected: bool = True
 
@@ -974,7 +976,7 @@ class ParamsPage(QWidget):
         normal_color = self._get_theme_color("NORMAL_COLOR", "#00B75A")
         danger_color = self._get_theme_color("DANGER_COLOR", "#CC4444")
 
-        base = normal_color if self.enabled and self.coil_connected else danger_color
+        base = normal_color if self.system_enabled else danger_color
         r, g, b, _ = base.red(), base.green(), base.blue(), base.alpha()
 
         css = f"""
@@ -1046,14 +1048,13 @@ class ParamsPage(QWidget):
         self.intensity_gauge.setDisabled(True)
 
     def _apply_enable_state(self) -> None:
-        en_enabled = self.enabled
-        start_stop_enabled = self.enabled and self.coil_connected
+        self.system_enabled = self.enabled and self.coil_connected and self.normal_Temperature
 
         self._update_bottom_panel_style()
-        self._set_start_stop_enabled(start_stop_enabled)
-        self._update_intensity_for_enable((en_enabled and self.coil_connected))
-        self._update_leds_for_enable(start_stop_enabled)
-        self._force_mt_at_disable(start_stop_enabled)
+        self._set_start_stop_enabled(self.system_enabled)
+        self._update_intensity_for_enable(self.system_enabled)
+        self._update_leds_for_enable(self.system_enabled)
+        self._force_mt_at_disable(self.system_enabled)
 
         
 
