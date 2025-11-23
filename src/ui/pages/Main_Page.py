@@ -964,7 +964,7 @@ class ParamsPage(QWidget):
         normal_color = self._get_theme_color("NORMAL_COLOR", "#00B75A")
         danger_color = self._get_theme_color("DANGER_COLOR", "#CC4444")
 
-        base = normal_color if self.enabled else danger_color
+        base = normal_color if self.enabled and self.coil_connected else danger_color
         r, g, b, _ = base.red(), base.green(), base.blue(), base.alpha()
 
         css = f"""
@@ -1042,7 +1042,7 @@ class ParamsPage(QWidget):
         self._update_bottom_panel_style()
         self._set_start_stop_enabled(start_stop_enabled)
         self._update_intensity_for_enable((en_enabled and self.coil_connected))
-        self._update_leds_for_enable(en_enabled)
+        self._update_leds_for_enable(start_stop_enabled)
         self._force_mt_at_disable(start_stop_enabled)
 
         
