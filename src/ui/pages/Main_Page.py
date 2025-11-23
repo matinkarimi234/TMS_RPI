@@ -1060,7 +1060,7 @@ class ParamsPage(QWidget):
 
         sc = getattr(self, "session_controls", None)
         if sc is not None:
-            mt_enabled = self.enabled and self.coil_connected and (self.session_state != SessionState.MT_EDIT)
+            mt_enabled = self.system_enabled and (self.session_state != SessionState.MT_EDIT)
             sc.mt_frame.setEnabled(mt_enabled)
 
 
@@ -1122,10 +1122,10 @@ class ParamsPage(QWidget):
             self.normal_Temperature = True
 
         else:
-            self._set_backend_state("error")
-            self.normal_Temperature = False
-
-        self._apply_enable_state()
+            if self.normal_Temperature:
+                self._set_backend_state("error")
+                self.normal_Temperature = False
+                self._apply_enable_state()
 
     def _on_intensity_changed(self, v: int) -> None:
         if self.session_state == SessionState.MT_EDIT:
@@ -1237,11 +1237,10 @@ class ParamsPage(QWidget):
             self.normal_Temperature = True
             
         else:
-            self._set_backend_state("error")
-            self.normal_Temperature = False
-        
-
-        self._apply_enable_state()
+            if self.normal_Temperature:
+                self._set_backend_state("error")
+                self.normal_Temperature = False
+                self._apply_enable_state()
 
 
     def _on_igbt_Temperature(self, temperature : float):
@@ -1253,8 +1252,7 @@ class ParamsPage(QWidget):
             self.normal_Temperature = True
             
         else:
-            self._set_backend_state("error")
-            self.normal_Temperature = False
-        
-
-        self._apply_enable_state()
+            if self.normal_Temperature:
+                self._set_backend_state("error")
+                self.normal_Temperature = False
+                self._apply_enable_state()
