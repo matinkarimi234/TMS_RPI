@@ -73,6 +73,8 @@ class TMSProtocol:
     INTENSITY_ABS_MAX: int = 100  # %MSO absolute max
     FREQ_MIN: float = 0.1
     FREQ_MAX: float = 100.0
+    ITI_MIN: float = 0.5
+    ITI_MAX: float = 120.0
     IPI_MIN_HARD: float = 10.0   # ms
     IPI_MAX_HARD: float = 100.0 # ms
     BURST_PULSES_ALLOWED: ClassVar[List[int]] = [1, 2, 3, 4, 5]
@@ -102,6 +104,11 @@ class TMSProtocol:
             self.inter_pulse_interval_ms_init, self.IPI_MIN_HARD, self.IPI_MAX_HARD
         )
         self._frequency_hz = clamp(self.frequency_hz_init, self.FREQ_MIN, self.FREQ_MAX)
+
+        # >>> NEW: clamp ITI using ITI_MIN / ITI_MAX <<<
+        self.inter_train_interval_s = clamp(
+            self.inter_train_interval_s, self.ITI_MIN, self.ITI_MAX
+        )
 
         # No automatic correction; rely on UI dynamic bounds
         self._frequency_hz = clamp(

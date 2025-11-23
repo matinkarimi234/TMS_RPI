@@ -413,7 +413,8 @@ class ParamsPage(QWidget):
         if key == "train_count":
             return 1, 10000
         if key == "inter_train_interval_s":
-            return 0.01, 10000.0
+            # >>> CHANGED: use ITI_MIN / ITI_MAX <<<
+            return proto.ITI_MIN, proto.ITI_MAX
         if key == "burst_pulses_count":
             return min(proto.BURST_PULSES_ALLOWED), max(proto.BURST_PULSES_ALLOWED)
         if key == "ramp_fraction":
@@ -603,7 +604,12 @@ class ParamsPage(QWidget):
         if key == "frequency_hz":
             step = 0.1 if cur_val < 1.0 else 1.0
         elif key in ("inter_pulse_interval_ms", "inter_train_interval_s"):
-            step = 1
+
+            if key == "inter_train_interval_s":
+                # >>> NEW: ITI steps of 0.5 s <<<
+                step = 0.5
+            else:
+                step = 1
         elif key == "ramp_fraction":
             step = 0.1
         elif key in (
@@ -625,6 +631,10 @@ class ParamsPage(QWidget):
 
         if key == "frequency_hz":
             new_val = round(new_val, 1) if new_val < 1.0 else round(new_val)
+
+
+        if key == "inter_train_interval_s":
+            new_val = round(new_val * 2.0) / 2.0
 
         new_val = max(lo, min(hi, new_val))
         setattr(proto, key, new_val)

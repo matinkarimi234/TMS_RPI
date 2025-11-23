@@ -106,7 +106,7 @@ class CommandManager(QObject):
 
         buff[0] = HEADER_A
         buff[1] = SINGLE_PULSE
-        buff[2] = int(current_MT)
+        buff[4] = int(current_MT)
 
         cs = Calculate_Checksum(buff, UART_TX_SIZE)
         buff[UART_TX_SIZE - 1] = cs
@@ -164,16 +164,15 @@ class CommandManager(QObject):
 
         # Intensity in your chosen encoding
         buffer[3] = proto.absolute_intensity & 0xFF
+        buffer[4] = proto.subject_mt_percent & 0xFF
 
         # Frequency * 10 (e.g. 10.0 Hz -> 100)
         freq10 = int(float(getattr(proto, "frequency_hz", 0.0)) * 10.0)
-        buffer[4] = (freq10 & 0xFF00) >> 8
-        buffer[5] = (freq10 & 0x00FF) >> 0
+        buffer[5] = (freq10 & 0xFF00) >> 8
+        buffer[6] = (freq10 & 0x00FF) >> 0
 
         # Inter-train interval (integer seconds)
-        iti10 = int(getattr(proto, "inter_train_interval_s", 0.0) * 10)
-        buffer[6] = (iti10 & 0xFF00) >> 8
-        buffer[7] = (iti10 & 0x00FF) >> 0
+        buffer[7] = int(getattr(proto, "inter_train_interval_s", 0.0) * 2) & 0xFF
 
         # Inter-pulse interval in ms
         ipi = int(float(getattr(proto, "inter_pulse_interval_ms", 0.0)))
