@@ -88,7 +88,7 @@ class CoilTemperatureWidget(QWidget):
             "NORMAL_COLOR": g(theme_name, "CONNECTED_GREEN", "#00CC00"),
             "WARNING_COLOR": g(theme_name, "ACCENT_GRADIENT_END", "#fadb5a"),
             "DANGER_COLOR": g(theme_name, "DISCONNECTED_RED", "#CC0000"),
-            "DISCONNECTED_COLOR": g(theme_name, "TEXT_COLOR_SECONDARY", "#808080"),
+            "COIL_DISCONNECTED": g(theme_name, "COIL_DISCONNECTED", "#808080"),
         }
         self.update()
 
@@ -150,7 +150,7 @@ class CoilTemperatureWidget(QWidget):
             mode_color = QColor(c["DANGER_COLOR"])
             mode_text = "DANGER"
         else:  # DISCONNECTED
-            mode_color = QColor(c["DISCONNECTED_COLOR"])
+            mode_color = QColor(c["COIL_DISCONNECTED"])
             mode_text = "DISCONNECTED"
 
         # bottom status bar (always drawn)
