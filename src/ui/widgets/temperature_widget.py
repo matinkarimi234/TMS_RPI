@@ -171,7 +171,7 @@ class CoilTemperatureWidget(QWidget):
         # -----------------------------
         if self.mode == self.DISCONNECTED:
             # Only show "COIL NOT CONNECTED" in the middle area above the bar
-            painter.setPen(QColor(c["TEXT_COLOR"]))
+            painter.setPen(QColor(c["COIL_DISCONNECTED"]))
             temp_font = QFont("Tw Cen MT Condensed", self._tempFontSize)
             temp_font.setBold(True)
             painter.setFont(temp_font)
