@@ -1177,7 +1177,7 @@ class ParamsPage(QWidget):
 
     def _manage_state_from_uc(self, val: int):
         if self.session_state == SessionState.RUNNING or self.session_state == SessionState.PAUSED:
-            if val == uC_State.SET_PARAMETERS:
+            if val == 1: # Set Parameters
                 self._set_session_state(SessionState.IDLE)
 
                 if hasattr(self.pulse_widget, "stop"):
