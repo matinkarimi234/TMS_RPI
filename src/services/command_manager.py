@@ -91,7 +91,7 @@ class CommandManager(QObject):
 
         buff[0] = HEADER_A
         buff[1] = MT
-        buff[2] = int(mt_value)
+        buff[4] = int(mt_value)
 
         cs = Calculate_Checksum(buff, UART_TX_SIZE)
         buff[UART_TX_SIZE - 1] = cs
