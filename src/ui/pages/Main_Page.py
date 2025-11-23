@@ -298,6 +298,9 @@ class ParamsPage(QWidget):
         backend.intensityFromUc.connect(self._apply_intensity_from_uc)
         backend.coilTempFromUc.connect(self.set_coil_temperature)
 
+        backend.igbtTempFromUc.connect(self._on_igbt_Temperature)
+        backend.resistorTempFromUc.connect(self._on_resistor_Temperature)
+
         # Coil connection state (from uC)
         if hasattr(backend, "sw_state_from_uC"):
             backend.sw_state_from_uC.connect(self._on_coil_sw_state)
@@ -1104,6 +1107,18 @@ class ParamsPage(QWidget):
         if hasattr(self, "coil_temp_widget"):
             self.coil_temp_widget.setTemperature(temperature)
 
+
+        # Normal
+        if temperature < WARNING_TEMPERATURE_THRESHOLD:
+            pass
+        elif temperature < DANGER_TEMPERATURE_THRESHOLD:
+            pass
+        else:
+            self._set_backend_state("error")
+            self.enabled = False
+
+        self._apply_enable_state()
+
     def _on_intensity_changed(self, v: int) -> None:
         if self.session_state == SessionState.MT_EDIT:
             return
@@ -1203,3 +1218,31 @@ class ParamsPage(QWidget):
             self.gpio_backend.set_red_led(not enabled)
         except Exception:
             pass
+
+    # ------------------ Temperatures Handlers ------------------- #
+    def _on_resistor_Temperature(self, temperature : float):
+        # Normal
+        if temperature < WARNING_TEMPERATURE_THRESHOLD:
+            pass
+        elif temperature < DANGER_TEMPERATURE_THRESHOLD:
+            pass
+        else:
+            self._set_backend_state("error")
+            self.enabled = False
+        
+
+        self._apply_enable_state()
+
+
+    def _on_igbt_Temperature(self, temperature : float):
+        # Normal
+        if temperature < WARNING_TEMPERATURE_THRESHOLD:
+            pass
+        elif temperature < DANGER_TEMPERATURE_THRESHOLD:
+            pass
+        else:
+            self._set_backend_state("error")
+            self.enabled = False
+        
+
+        self._apply_enable_state()
