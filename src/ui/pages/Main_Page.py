@@ -1200,11 +1200,11 @@ class ParamsPage(QWidget):
                 except Exception:
                     pass
                 return
-
-            try:
-                self.mt_gauge.setValue(v)
-            except Exception:
-                pass
+            if self.mt_mode:
+                try:
+                    self.mt_gauge.setValue(v)
+                except Exception:
+                    pass
 
             if self.backend is not None:
                 try:
