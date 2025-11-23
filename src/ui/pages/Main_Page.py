@@ -18,7 +18,7 @@ from ui.widgets.pulse_bars_widget import PulseBarsWidget
 from ui.widgets.intensity_gauge import IntensityGauge, GaugeMode
 from ui.widgets.temperature_widget import CoilTemperatureWidget
 from ui.widgets.session_control_widget import SessionControlWidget
-from services.uart_backend import Uart_Backend
+from services.uart_backend import Uart_Backend, uC_State
 from services.gpio_backend import GPIO_Backend
 from ui.widgets.session_info_widget import SessionInfoWidget
 
@@ -305,6 +305,7 @@ class ParamsPage(QWidget):
         self.backend = backend
 
         # UC -> UI
+        backend.stateFromUc.connect(self._manage_state_from_uc)
         backend.intensityFromUc.connect(self._apply_intensity_from_uc)
         backend.coilTempFromUc.connect(self.set_coil_temperature)
 
@@ -1173,6 +1174,18 @@ class ParamsPage(QWidget):
 
             if self.backend is not None:
                 self.backend.request_param_update(proto)
+
+    def _manage_state_from_uc(self, val: int):
+        if val == uC_State.SET_PARAMETERS:
+            self._set_session_state(SessionState.IDLE)
+
+            if hasattr(self.pulse_widget, "stop"):
+                self.pulse_widget.stop()
+
+            self.session_controls.set_state(running=False, paused=False)
+            self._exit_remaining_mode()
+
+
 
     def _apply_intensity_from_uc(self, val: int) -> None:
         if self.session_state == SessionState.MT_EDIT:

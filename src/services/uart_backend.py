@@ -10,11 +10,15 @@ from services.command_manager import CommandManager
 from services.rx_manager import RxManager  # your existing RX parser
 
 
-class SessionState(Enum):
+class uC_State(Enum):
     IDLE = 0
-    RUNNING = 1
-    FAULT = 2   # optional, for future
-
+    SET_PARAMETERS = 1
+    START = 2
+    STOP = 3
+    PAUSE = 4
+    STIMULATE = 5
+    ERROR = 6
+    MT = 7
 
 class Uart_Backend(QObject):
     """
@@ -236,9 +240,7 @@ class Uart_Backend(QObject):
         if val == 0:
             self._state = SessionState.IDLE
         elif val == 1:
-            self._state = SessionState.RUNNING
-        else:
-            self._state = SessionState.FAULT
+            self._state = SessionState.SET_PARAMETERS
         self.stateFromUc.emit(val)
 
     def _on_intensity_from_uc(self, val: int):
