@@ -257,6 +257,7 @@ CoilTemperatureWidget {
 }
 
 CoilTemperatureWidget[state="disconnected"] {
+    color: {{COIL_DISCONNECTED}};
     qproperty-headerFontSize: 10;  /* header hidden anyway, but fine */
     qproperty-tempFontSize: 20;
     qproperty-modeFontSize: 10;

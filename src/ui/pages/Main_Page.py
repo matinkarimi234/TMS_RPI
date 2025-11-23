@@ -922,8 +922,10 @@ class ParamsPage(QWidget):
 
         if not self.coil_connected:
             self._set_backend_state("error")
+            self.enabled = False
 
         self._apply_enable_state()
+        
 
         if (not self.coil_connected) and (self.session_state in (SessionState.RUNNING, SessionState.PAUSED)):
             self._stop_session()
