@@ -22,7 +22,10 @@ from services.uart_backend import Uart_Backend
 from services.gpio_backend import GPIO_Backend
 from ui.widgets.session_info_widget import SessionInfoWidget
 
-from config.settings import WARNING_TEMPERATURE_THRESHOLD, DANGER_TEMPERATURE_THRESHOLD, HARD_MAX_INTENSITY
+from config.settings import COIL_WARNING_TEMPERATURE_THRESHOLD, COIL_DANGER_TEMPERATURE_THRESHOLD
+from config.settings import IGBT_WARNING_TEMPERATURE_THRESHOLD, IGBT_DANGER_TEMPERATURE_THRESHOLD
+from config.settings import RESISTOR_WARNING_TEMPERATURE_THRESHOLD, RESISTOR_DANGER_TEMPERATURE_THRESHOLD
+from config.settings import HARD_MAX_INTENSITY
 
 # NEW helpers
 from ui.helpers.session_state import SessionState
@@ -80,6 +83,8 @@ class ParamsPage(QWidget):
 
         # Coil connection state (from sw_state_from_uC)
         self.coil_connected: bool = True
+
+        self.normal_Temperature: bool = True
 
         # Track last backend "global" state to avoid spamming uC
         # possible values: None, "idle", "error"
@@ -161,8 +166,8 @@ class ParamsPage(QWidget):
         self.top_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
 
         self.coil_temp_widget = CoilTemperatureWidget(
-            warning_threshold=WARNING_TEMPERATURE_THRESHOLD,
-            danger_threshold=DANGER_TEMPERATURE_THRESHOLD,
+            warning_threshold=COIL_WARNING_TEMPERATURE_THRESHOLD,
+            danger_threshold=COIL_DANGER_TEMPERATURE_THRESHOLD,
         )
         self.coil_temp_widget.setCoilConnected(False)
 
@@ -1109,13 +1114,15 @@ class ParamsPage(QWidget):
 
 
         # Normal
-        if temperature < WARNING_TEMPERATURE_THRESHOLD:
-            pass
-        elif temperature < DANGER_TEMPERATURE_THRESHOLD:
-            pass
+        if temperature < COIL_WARNING_TEMPERATURE_THRESHOLD:
+            self.normal_Temperature = True
+
+        elif temperature < COIL_DANGER_TEMPERATURE_THRESHOLD:
+            self.normal_Temperature = True
+
         else:
             self._set_backend_state("error")
-            self.enabled = False
+            self.normal_Temperature = False
 
         self._apply_enable_state()
 
@@ -1222,13 +1229,15 @@ class ParamsPage(QWidget):
     # ------------------ Temperatures Handlers ------------------- #
     def _on_resistor_Temperature(self, temperature : float):
         # Normal
-        if temperature < WARNING_TEMPERATURE_THRESHOLD:
-            pass
-        elif temperature < DANGER_TEMPERATURE_THRESHOLD:
-            pass
+        if temperature < RESISTOR_WARNING_TEMPERATURE_THRESHOLD:
+            self.normal_Temperature = True
+
+        elif temperature < RESISTOR_DANGER_TEMPERATURE_THRESHOLD:
+            self.normal_Temperature = True
+            
         else:
             self._set_backend_state("error")
-            self.enabled = False
+            self.normal_Temperature = False
         
 
         self._apply_enable_state()
@@ -1236,13 +1245,15 @@ class ParamsPage(QWidget):
 
     def _on_igbt_Temperature(self, temperature : float):
         # Normal
-        if temperature < WARNING_TEMPERATURE_THRESHOLD:
-            pass
-        elif temperature < DANGER_TEMPERATURE_THRESHOLD:
-            pass
+        if temperature < IGBT_WARNING_TEMPERATURE_THRESHOLD:
+            self.normal_Temperature = True
+
+        elif temperature < IGBT_DANGER_TEMPERATURE_THRESHOLD:
+            self.normal_Temperature = True
+            
         else:
             self._set_backend_state("error")
-            self.enabled = False
+            self.normal_Temperature = False
         
 
         self._apply_enable_state()
