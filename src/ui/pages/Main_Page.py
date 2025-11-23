@@ -810,23 +810,20 @@ class ParamsPage(QWidget):
             except Exception:
                 pass
 
+            self.mt_gauge.setRange(0, 100)
+            mt_val = int(self.current_protocol.subject_mt_percent)
+            mt_val = max(0, min(100, mt_val))
+
             if self.backend is not None:
                 try:
-                    pass
+                    self.backend.mt_state(mt_val)
                     #self.backend.request_param_update(self.current_protocol)
                 except Exception:
                     pass
 
-        self.mt_gauge.setRange(0, 100)
-        mt_val = int(self.current_protocol.subject_mt_percent)
-        mt_val = max(0, min(100, mt_val))
         self.mt_gauge.setValue(mt_val)
 
-        if self.backend is not None:
-            try:
-                self.backend.mt_state(mt_val)
-            except Exception:
-                pass
+
 
         sc = self.session_controls
         self._session_btn_labels_backup = {
