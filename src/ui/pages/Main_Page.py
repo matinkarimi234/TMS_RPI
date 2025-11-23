@@ -1201,7 +1201,7 @@ class ParamsPage(QWidget):
 
 
     def _apply_intensity_from_uc(self, val: int) -> None:
-        if self.session_state == SessionState.MT_EDIT and self._uC_State == 7:
+        if self.session_state == SessionState.MT_EDIT and self._uC_State == 7: # MT State
             v = int(val)
             v = max(0, min(100, v))
 
@@ -1237,7 +1237,7 @@ class ParamsPage(QWidget):
                 proto.intensity_percent_of_mt = 0.0
                 proto.intensity_percent_of_mt_init = 0.0
 
-        if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
+        if self.intensity_gauge.mode() != GaugeMode.INTENSITY and self._uC_State != 1: # Set Parameters
             return
 
         if not self.enabled:
