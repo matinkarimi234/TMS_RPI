@@ -67,7 +67,7 @@ class Uart_Backend(QObject):
         self.rx_m = RxManager(self.uart_s)
 
         # state tracking
-        self._state: SessionState = SessionState.IDLE
+        self._state: uC_State = uC_State.IDLE
         self._current_proto = None
         self._last_params_frame: Optional[bytes] = None
         self._next_command_frame: Optional[bytes] = None
@@ -238,9 +238,9 @@ class Uart_Backend(QObject):
     def _on_state_from_uc(self, val: int):
         # map uC state code to enum if you like
         if val == 0:
-            self._state = SessionState.IDLE
+            self._state = uC_State.IDLE
         elif val == 1:
-            self._state = SessionState.SET_PARAMETERS
+            self._state = uC_State.SET_PARAMETERS
         self.stateFromUc.emit(val)
 
     def _on_intensity_from_uc(self, val: int):
