@@ -800,24 +800,25 @@ class ParamsPage(QWidget):
                 self._prev_intensity_percent = None
 
             try:
-                self.current_protocol.intensity_percent_of_mt = 100.0
-                self.current_protocol.intensity_percent_of_mt_init = 100.0
+                self.current_protocol.intensity_percent_of_mt = 0.0
+                self.current_protocol.intensity_percent_of_mt_init = 0.0
             except Exception:
                 pass
 
             try:
-                self.intensity_gauge.setValue(100)
+                self.intensity_gauge.setValue(0)
             except Exception:
                 pass
 
             if self.backend is not None:
                 try:
-                    self.backend.request_param_update(self.current_protocol)
+                    pass
+                    #self.backend.request_param_update(self.current_protocol)
                 except Exception:
                     pass
 
         self.mt_gauge.setRange(0, 100)
-        mt_val = int(self._get_subject_mt_percent())
+        mt_val = int(self.current_protocol.subject_mt_percent)
         mt_val = max(0, min(100, mt_val))
         self.mt_gauge.setValue(mt_val)
 
