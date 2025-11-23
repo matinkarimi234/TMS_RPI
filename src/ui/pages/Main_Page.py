@@ -88,11 +88,11 @@ class ParamsPage(QWidget):
         # Param list definition: (label, proto_key, unit)
         self.param_definitions = [
             ("Burst Pulses / Burst", "burst_pulses_count", "pulses"),
-            ("Inter-pulse Interval (ms)", "inter_pulse_interval_ms", "ms"),
-            ("Frequency (Hz)", "frequency_hz", "Hz"),
+            ("Inter Pulse Interval (ms)", "inter_pulse_interval_ms", "ms"),
+            ("Rep Rate", "frequency_hz", "Hz"),
             ("Pulses per Train", "pulses_per_train", ""),
             ("Train Count", "train_count", ""),
-            ("Inter-train Interval (s)", "inter_train_interval_s", "s"),
+            ("Inter Train Interval (s)", "inter_train_interval_s", "s"),
             ("Ramp Fraction", "ramp_fraction", ""),
             ("Ramp Steps", "ramp_steps", ""),
         ]
