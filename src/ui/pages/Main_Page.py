@@ -111,6 +111,8 @@ class ParamsPage(QWidget):
         self.mt_mode: bool = False  # mirrors SessionState.MT_EDIT
         self._session_btn_labels_backup: Dict[str, str] = {}
 
+        self._uC_State: int = 0
+
         # Backup for intensity percentage when entering MT
         self._prev_intensity_percent: Optional[float] = None
 
@@ -820,6 +822,7 @@ class ParamsPage(QWidget):
                     self.backend.request_param_update(self.current_protocol)
                 except Exception:
                     pass
+        
 
         self.mt_gauge.setValue(mt_val)
 
@@ -1184,7 +1187,7 @@ class ParamsPage(QWidget):
                 self.backend.request_param_update(proto)
 
     def _manage_state_from_uc(self, val: int):
-        pass
+        self._uC_State = val
         # if self.session_state == SessionState.RUNNING or self.session_state == SessionState.PAUSED:
         #     if val == 1: # Set Parameters
         #         self._set_session_state(SessionState.IDLE)
@@ -1198,7 +1201,7 @@ class ParamsPage(QWidget):
 
 
     def _apply_intensity_from_uc(self, val: int) -> None:
-        if self.session_state == SessionState.MT_EDIT:
+        if self.session_state == SessionState.MT_EDIT and self._uC_State == 7:
             v = int(val)
             v = max(0, min(100, v))
 
