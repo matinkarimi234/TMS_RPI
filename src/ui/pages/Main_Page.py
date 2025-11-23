@@ -1052,6 +1052,14 @@ class ParamsPage(QWidget):
 
     def _apply_enable_state(self) -> None:
         normal_temp = self.coil_normal_Temperature and self.igbt_normal_Temperature and self.resistor_normal_Temperature
+
+        # Disable Completely
+        if not normal_temp:
+            self.enabled = False
+
+        if not self.coil_connected:
+            self.enabled = False
+
         self.system_enabled = self.enabled and self.coil_connected and normal_temp
 
         self._update_bottom_panel_style()
