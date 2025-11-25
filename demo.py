@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 from typing import Optional
-
+ 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QStackedWidget, QWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
