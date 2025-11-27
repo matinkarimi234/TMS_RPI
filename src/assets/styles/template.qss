@@ -310,3 +310,5 @@ SessionInfoWidget QLabel#sessionInfoMtLabel {
     font-weight: 600;
     /* color also inherits {{TEXT_COLOR}} */
 }
+
+

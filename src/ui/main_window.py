@@ -1,17 +1,12 @@
 # main_window.py (or wherever your MainWindow class lives)
 
-import sys
 from pathlib import Path
 
-from PySide6.QtWidgets import (
-    QMainWindow, QStackedWidget,
-    QSizePolicy
-)
+from PySide6.QtWidgets import QMainWindow
 
 from app.theme_manager import ThemeManager
 from core.protocol_manager_revised import ProtocolManager
 from ui.pages.Main_Page import ParamsPage
-from ui.pages.Protocol_Page import ProtocolListPage
 from services.uart_backend import Uart_Backend
 from services.gpio_backend import GPIO_Backend   # NEW
 
@@ -59,24 +54,17 @@ class MainWindow(QMainWindow):
         self.pm = ProtocolManager()
         self.pm.load_from_json(protocol_json)
 
-        self.stack = QStackedWidget()
-        self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setCentralWidget(self.stack)
-
-        # Main parameters page, now using GPIO_Backend
-        self.params = ParamsPage(theme_manager, gpio_backend=self.gpio_backend, initial_theme=initial_theme)
-        self.params.request_protocol_list.connect(self._show_list)
+        # Main parameters page, now using GPIO_Backend and inline protocol mode
+        self.params = ParamsPage(
+            theme_manager,
+            protocol_manager=self.pm,
+            gpio_backend=self.gpio_backend,
+            initial_theme=initial_theme,
+        )
 
         self.params.bind_backend(self.uart_backend)
 
-        # Protocol list page
-        self.plist = ProtocolListPage(self.pm)
-        self.plist.accepted.connect(self._choose)
-        self.plist.canceled.connect(self._show_params)
-
-        self.stack.addWidget(self.params)
-        self.stack.addWidget(self.plist)
-        self._show_params()
+        self.setCentralWidget(self.params)
 
         self.resize(SCREEN_RESOLUTION_W, SCREEN_RESOLUTION_H)
         self.setMinimumSize(SCREEN_RESOLUTION_W, SCREEN_RESOLUTION_H)
@@ -110,15 +98,6 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     #   Navigation & protocol load
     # ------------------------------------------------------------------
-    def _show_params(self):
-        self.stack.setCurrentWidget(self.params)
-
-    def _show_list(self):
-        self.stack.setCurrentWidget(self.plist)
-
-    def _choose(self, name: str):
-        self._load(name)
-        self._show_params()
 
     def _load(self, name: str):
         proto = self.pm.get_protocol(name)
