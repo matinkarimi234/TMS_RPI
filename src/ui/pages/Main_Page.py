@@ -176,8 +176,9 @@ class ParamsPage(QWidget):
         self.protocol_param_list.setSpacing(4)
         self.protocol_param_list.setUniformItemSizes(True)
 
-        self.protocol_pulse_widget = PulseBarsWidget(self)
-
+        shared_param_font = self.list_widget.font()
+        self.protocol_list_widget.setFont(shared_param_font)
+        self.protocol_param_list.setFont(shared_param_font)
 
         # Remaining gauge mode disabled, but we keep connection
         self.pulse_widget.sessionRemainingChanged.connect(
@@ -343,18 +344,17 @@ class ParamsPage(QWidget):
         left_col.setContentsMargins(0, 0, 0, 0)
         left_col.setSpacing(8)
         self.protocol_list_widget.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
+            QSizePolicy.Expanding, QSizePolicy.Preferred
         )
-        left_col.addWidget(self.protocol_list_widget, stretch=1)
+        left_col.addWidget(self.protocol_list_widget, stretch=0)
         layout.addLayout(left_col, stretch=1)
 
-        # Middle: pulse preview + placeholder (top spacer left empty for future use)
+        # Middle: placeholder (top spacer left empty for future use)
         middle_col = QVBoxLayout()
         middle_col.setContentsMargins(0, 0, 0, 0)
         middle_col.setSpacing(8)
         middle_col.addStretch(1)
-        middle_col.addWidget(self.protocol_pulse_widget, stretch=1)
-        middle_col.addWidget(self.protocol_placeholder, stretch=1)
+        middle_col.addWidget(self.protocol_placeholder, stretch=0, alignment=Qt.AlignTop)
         layout.addLayout(middle_col, stretch=1)
 
         # Right: parameter list mirror (shares width with other columns)
@@ -362,10 +362,22 @@ class ParamsPage(QWidget):
         right_col.setContentsMargins(0, 0, 0, 0)
         right_col.setSpacing(8)
         self.protocol_param_list.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
+            QSizePolicy.Expanding, QSizePolicy.Preferred
         )
-        right_col.addWidget(self.protocol_param_list, stretch=1)
+        right_col.addWidget(self.protocol_param_list, stretch=0)
         layout.addLayout(right_col, stretch=1)
+
+        # Align column widths with the coil temperature widget and keep compact heights
+        column_min_width = max(self.coil_temp_widget.sizeHint().width(), 220)
+        for widget in (
+            self.protocol_list_widget,
+            self.protocol_placeholder,
+            self.protocol_param_list,
+        ):
+            widget.setMinimumWidth(column_min_width)
+            widget.setMaximumWidth(column_min_width)
+
+        self.protocol_param_list.setMaximumHeight(self.protocol_placeholder.minimumHeight())
 
         return page
 
@@ -438,7 +450,6 @@ class ParamsPage(QWidget):
         self.intensity_gauge.setMode(GaugeMode.INTENSITY)
         self.intensity_gauge.setFromProtocol(proto)
         self.pulse_widget.set_protocol(proto)
-        self.protocol_pulse_widget.set_protocol(proto)
 
         # Update header protocol name
         proto_name = getattr(proto, "name", None) or getattr(proto, "protocol_name", None) or "–"
@@ -452,7 +463,6 @@ class ParamsPage(QWidget):
         # Palette / theme
         pal = self.theme_manager.generate_palette(self.current_theme)
         self.pulse_widget.setPalette(pal)
-        self.protocol_pulse_widget.setPalette(pal)
         self.intensity_gauge.setPalette(pal)
         self.mt_gauge.setPalette(pal)
         try:
@@ -1328,7 +1338,6 @@ class ParamsPage(QWidget):
 
         pal = self.theme_manager.generate_palette(theme_name)
         self.pulse_widget.setPalette(pal)
-        self.protocol_pulse_widget.setPalette(pal)
         self.intensity_gauge.setPalette(pal)
         self.mt_gauge.setPalette(pal)
 
