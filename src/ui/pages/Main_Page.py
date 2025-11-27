@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QStackedLayout,
-    QListWidget,
     QListWidgetItem,
+    QSizePolicy,
 )
 
 from app.theme_manager import ThemeManager
@@ -158,21 +158,27 @@ class ParamsPage(QWidget):
 
 
         # Protocol selection widgets
-        self.protocol_list_widget = QListWidget(self)
+        self.protocol_list_widget = NavigationListWidget(self)
+        self.protocol_list_widget.setSpacing(4)
+        self.protocol_list_widget.setUniformItemSizes(True)
         self.protocol_list_widget.itemSelectionChanged.connect(
             self._on_protocol_selected
         )
-        self.protocol_list_widget.setObjectName("protocol_list_widget")
 
         self.protocol_placeholder = QLabel("Protocol preview", self)
         self.protocol_placeholder.setAlignment(Qt.AlignCenter)
-        self.protocol_placeholder.setStyleSheet(
-            "border: 1px dashed rgba(255, 255, 255, 80);"
-            "color: rgba(255, 255, 255, 160);"
+        self.protocol_placeholder.setMinimumHeight(220)
+        self.protocol_placeholder.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
 
         self.protocol_param_list = NavigationListWidget()
+        self.protocol_param_list.setSpacing(4)
+        self.protocol_param_list.setUniformItemSizes(True)
 
+        shared_param_font = self.list_widget.font()
+        self.protocol_list_widget.setFont(shared_param_font)
+        self.protocol_param_list.setFont(shared_param_font)
 
         # Remaining gauge mode disabled, but we keep connection
         self.pulse_widget.sessionRemainingChanged.connect(
@@ -331,25 +337,47 @@ class ParamsPage(QWidget):
         page = QWidget()
         layout = QHBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
 
-        # Left: available protocols
+        # Left: available protocols (compact, theme-driven)
         left_col = QVBoxLayout()
-        left_col.addWidget(QLabel("Protocols", page))
-        left_col.addWidget(self.protocol_list_widget, stretch=1)
+        left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(8)
+        self.protocol_list_widget.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Preferred
+        )
+        left_col.addWidget(self.protocol_list_widget, stretch=0)
         layout.addLayout(left_col, stretch=1)
 
-        # Middle: visual placeholder
+        # Middle: placeholder (top spacer left empty for future use)
         middle_col = QVBoxLayout()
+        middle_col.setContentsMargins(0, 0, 0, 0)
+        middle_col.setSpacing(8)
         middle_col.addStretch(1)
-        self.protocol_placeholder.setFixedSize(220, 220)
-        middle_col.addWidget(self.protocol_placeholder, alignment=Qt.AlignCenter)
-        middle_col.addStretch(1)
+        middle_col.addWidget(self.protocol_placeholder, stretch=0, alignment=Qt.AlignTop)
         layout.addLayout(middle_col, stretch=1)
 
-        # Right: parameter list mirror
+        # Right: parameter list mirror (shares width with other columns)
         right_col = QVBoxLayout()
-        right_col.addWidget(self.protocol_param_list, stretch=1)
+        right_col.setContentsMargins(0, 0, 0, 0)
+        right_col.setSpacing(8)
+        self.protocol_param_list.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Preferred
+        )
+        right_col.addWidget(self.protocol_param_list, stretch=0)
         layout.addLayout(right_col, stretch=1)
+
+        # Align column widths with the coil temperature widget and keep compact heights
+        column_min_width = max(self.coil_temp_widget.sizeHint().width(), 220)
+        for widget in (
+            self.protocol_list_widget,
+            self.protocol_placeholder,
+            self.protocol_param_list,
+        ):
+            widget.setMinimumWidth(column_min_width)
+            widget.setMaximumWidth(column_min_width)
+
+        self.protocol_param_list.setMaximumHeight(self.protocol_placeholder.minimumHeight())
 
         return page
 
@@ -443,6 +471,8 @@ class ParamsPage(QWidget):
             self.coil_temp_widget.applyTheme(self.theme_manager, self.current_theme)
         except Exception:
             pass
+
+        self._update_protocol_placeholder_style(self.current_theme)
 
         # Adjust intensity range based on MT
         self._update_intensity_gauge_range()
@@ -1318,7 +1348,24 @@ class ParamsPage(QWidget):
         except Exception as e:
             print("Couldn't apply theme to gauge/coil widget:", e)
 
+        self._update_protocol_placeholder_style(theme_name)
         self._update_bottom_panel_style()
+
+    def _update_protocol_placeholder_style(self, theme_name: Optional[str] = None) -> None:
+        if not self.theme_manager:
+            return
+
+        theme = theme_name or self.current_theme
+        border_color = self.theme_manager.get_color(
+            theme, "BORDER_COLOR", "rgba(255, 255, 255, 0.25)"
+        )
+        text_color = self.theme_manager.get_color(
+            theme, "TEXT_COLOR_SECONDARY", "rgba(255, 255, 255, 0.6)"
+        )
+
+        self.protocol_placeholder.setStyleSheet(
+            f"border: 1px dashed {border_color};" f"color: {text_color};"
+        )
 
     def _toggle_theme(self) -> None:
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
