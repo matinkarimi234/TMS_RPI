@@ -149,6 +149,7 @@ class PulseTrainView(QWidget):
         burst_progress: float,
         ipi_ms: float,
         burst_pulses_count: int,
+        train_duration_s: Optional[float] = None
     ):
         """
         Called each frame during 'burst' phase (and at setup/done).
@@ -160,8 +161,7 @@ class PulseTrainView(QWidget):
         self._burst_pulses_count = max(1, burst_pulses_count)
 
         # visual burst duration (train-level)
-        self._burst_duration_s = self._pulses_per_train / self._freq_hz
-
+        self._burst_duration_s = train_duration_s if train_duration_s is not None else 0.0
         # clamp burst_progress
         if burst_progress < 0.0:
             burst_progress = 0.0
@@ -581,41 +581,23 @@ class PulseBarsWidget(QWidget):
     # ---------- timing helpers ----------
 
     def _compute_train_duration_s(self) -> float:
-            """
-            Calculates the active time of ONE train (start of first pulse to start of last pulse).
-            
-            Logic:
-            1. Determine number of bursts required to fit 'pulses_per_train'.
-            2. Time = (NumBursts - 1) * (1/Freq) + Duration_of_Last_Burst
-            3. Duration_of_Last_Burst = (PulsesInLastBurst - 1) * IPI
-            """
-            P = max(1, self._pulses_per_train)
-            B = max(1, self._burst_pulses_count)
-            freq = max(0.1, self._freq_hz)
-            ipi_s = self._ipi_ms / 1000.0
-
-            if B == 1:
-                # STANDARD MODE
-                # Pulses are just separated by Frequency
-                # Time from Pulse 1 to Pulse N = (N-1) * Period
-                return (P - 1) * (1.0 / freq)
-            else:
-                # BURST MODE
-                # How many full bursts?
-                # e.g. 10 pulses, burst of 3. -> 3 full bursts (3,3,3) + 1 partial (1)
-                num_bursts = (P + B - 1) // B 
-                
-                # Pulses in the very last burst (e.g. 1 in the example above)
-                pulses_in_last = P % B
-                if pulses_in_last == 0: pulses_in_last = B
-                
-                # Time spent waiting between burst STARTS
-                inter_burst_time = (num_bursts - 1) * (1.0 / freq)
-                
-                # Time spent INSIDE the last burst
-                intra_burst_time = (pulses_in_last - 1) * ipi_s
-                
-                return inter_burst_time + intra_burst_time
+        """
+        Calculates the active time of ONE train (start of first pulse to start of last pulse).
+        
+        Logic matches the C code structure:
+        - Treats pulses_per_train as total pulses (P).
+        - burst_pulses_count as pulses per burst (B).
+        - Allows for partial last burst if P % B != 0.
+        - Total time = (P - num_events) * ipi_s + (num_events - 1) * (1 / freq)
+        """
+        P = max(1, self._pulses_per_train)
+        B = max(1, self._burst_pulses_count)
+        freq = max(0.1, self._freq_hz)
+        ipi_s = self._ipi_ms / 1000.0
+        num_events = (P + B - 1) // B
+        intra_intervals = P - num_events
+        inter_intervals = num_events - 1 if num_events > 0 else 0
+        return intra_intervals * ipi_s + inter_intervals * (1.0 / freq)
 
     def _compute_total_duration_s(self) -> float:
             """
@@ -654,7 +636,8 @@ class PulseBarsWidget(QWidget):
                 amplitude_label=self._amp ,
                 burst_progress=0.0,
                 ipi_ms=self._ipi_ms,
-                burst_pulses_count=self._burst_pulses_count
+                burst_pulses_count=self._burst_pulses_count,
+                train_duration_s=self._train_duration_s
             )
             self._emit_remaining(0.0)
 
@@ -714,6 +697,7 @@ class PulseBarsWidget(QWidget):
             burst_progress=0.0,
             ipi_ms=self._ipi_ms,
             burst_pulses_count=self._burst_pulses_count,
+            train_duration_s=self._train_duration_s
         )
         self._show_train_mode()
 
@@ -817,7 +801,8 @@ class PulseBarsWidget(QWidget):
                     self._show_train_mode()
                     self.train_view.set_burst_state(
                         self._pulses_per_train, self._freq_hz, self.train_view._amplitude_label,
-                        progress, self._ipi_ms, self._burst_pulses_count
+                        progress, self._ipi_ms, self._burst_pulses_count,
+                        train_duration_s=self._train_duration_s
                     )
                     self.train_view.set_train_position(i + 1, self._train_count)
                     return
