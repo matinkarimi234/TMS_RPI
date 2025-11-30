@@ -264,6 +264,7 @@ CoilTemperatureWidget[state="disconnected"] {
 }
 
 SessionControlWidget QFrame {
+    background-color: {{BORDER_COLOR}};
     border-radius: 6px;
     padding: 4px 10px;
 }

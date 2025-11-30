@@ -224,7 +224,7 @@ class ParamsPage(QWidget):
         # --- Bottom row: session controls ---
         bottom_layout = QHBoxLayout(self.bottom_panel)
         # no horizontal margins, no extra spacing: let SessionControlWidget own the layout
-        bottom_layout.setContentsMargins(8, 0, 8, 0)
+        bottom_layout.setContentsMargins(16, 0, 8, 0)
         bottom_layout.setSpacing(0)
         bottom_layout.addWidget(self.session_controls)  # <-- no AlignHCenter, no stretches
 
