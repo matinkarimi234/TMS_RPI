@@ -613,18 +613,18 @@ class ParamsPage(QWidget):
     # ------------------------------------------------------------------
     def _modify_value(self, delta: float) -> None:
         # MT edit state: encoder adjusts MT gauge directly
-        if self.session_state == SessionState.MT_EDIT:
-            cur = int(self.mt_gauge.value())
-            new_val = cur + int(delta)
-            new_val = max(0, min(100, new_val))
-            self.mt_gauge.setValue(new_val)
+        # if self.session_state == SessionState.MT_EDIT:
+        #     cur = int(self.mt_gauge.value())
+        #     new_val = cur + int(delta)
+        #     new_val = max(0, min(100, new_val))
+        #     self.mt_gauge.setValue(new_val)
 
-            if self.backend is not None:
-                try:
-                    self.backend.mt_state(new_val)
-                except Exception:
-                    pass
-            return
+        #     if self.backend is not None:
+        #         try:
+        #             self.backend.mt_state(new_val)
+        #         except Exception:
+        #             pass
+        #     return
         
         if self.session_state == SessionState.PROTOCOL_EDIT:
             return
