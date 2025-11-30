@@ -85,12 +85,12 @@ class SessionControlWidget(QWidget):
             self.stop_frame,
             self.start_pause_frame,
         ):
-            btn.setMinimumWidth(120)
+            btn.setMinimumWidth(100)
             btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         # === MAIN LAYOUT ===
         main_lay = QHBoxLayout(self)
-        main_lay.setContentsMargins(0, 0, 0, 0)  # no outer margins
+        main_lay.setContentsMargins(20, 0, 10, 0)  # no outer margins
         main_lay.setSpacing(0)                   # spacing handled by inner layout
 
         # First and last: pinned to left/right
@@ -98,29 +98,28 @@ class SessionControlWidget(QWidget):
         last_btn = self.start_pause_frame
 
         # Middle group: centered
-        center_buttons = [self.theme_frame]
+        center_buttons = [self.mt_frame, self.theme_frame, self.stop_frame]
 
         center_lay = QHBoxLayout()
         center_lay.setContentsMargins(0, 0, 0, 0)
-        center_lay.setSpacing(35)  # distance between middle buttons
+        center_lay.setSpacing(63)  # distance between middle buttons
         for btn in center_buttons:
             center_lay.addWidget(btn)
 
         # Left, center, right layout:
         # [ first_btn ][ stretch ][ center_lay ][ stretch ][ last_btn ]
         main_lay.addWidget(first_btn)
-        main_lay.setSpacing(8)
-        main_lay.addWidget(self.mt_frame)
         main_lay.addStretch(1)
+        
 
         if center_buttons:
             main_lay.addLayout(center_lay)
             main_lay.addStretch(1)
+            
+        
 
-        main_lay.addWidget(self.stop_frame)
-        main_lay.setSpacing(8)  # space between stop and start/pause 
         main_lay.addWidget(last_btn)
-
+        main_lay.setSpacing(20)
         # --- Connections ---
         self.stop_frame.clicked.connect(self._on_stop_clicked)
         self.start_pause_frame.clicked.connect(self._on_start_pause_clicked)
@@ -195,7 +194,7 @@ if __name__ == "__main__":
 
     sc = SessionControlWidget()
     # IMPORTANT: don't do alignment=Qt.AlignCenter here,
-    # or you’ll break the edge hugging.
+    # or youâ€™ll break the edge hugging.
     lay.addWidget(sc)
 
     w.setCentralWidget(central)
