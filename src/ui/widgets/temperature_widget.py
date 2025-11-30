@@ -43,7 +43,7 @@ class CoilTemperatureWidget(QWidget):
             "DISCONNECTED_COLOR": "#808080",  # optional
         }
 
-        self.setMinimumSize(200, 90)
+        self.setMinimumSize(255, 90)
         self.setObjectName("CoilTemperatureWidget")
 
     # ------------------------------

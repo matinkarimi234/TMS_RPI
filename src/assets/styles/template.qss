@@ -102,13 +102,13 @@ NavigationListWidget::item:selected QLabel {
 
 /* --- Specific Label Styling for UNSELECTED items --- */
 #ListItemTitleLabel {
-    font-size:   22px;
+    font-size:   20px;
     font-weight: bold;
     color:       {{TEXT_COLOR}};
 }
 
 #ListItemValueLabel {
-    font-size:   22px;
+    font-size:   24px;
     font-weight: bold;
     color:       {{TEXT_COLOR}};
 }
@@ -311,4 +311,14 @@ SessionInfoWidget QLabel#sessionInfoMtLabel {
     /* color also inherits {{TEXT_COLOR}} */
 }
 
+
+
+NavigationListWidget#protocol_list_widget {
+    font-size: 18px;
+}
+
+QWidget#top_panel {
+    border: 1px solid {{BORDER_COLOR}};
+    border-radius: 6px;
+}
 

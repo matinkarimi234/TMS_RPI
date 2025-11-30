@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QWidget, QFrame, QHBoxLayout, QLabel, QSizePolicy
 class FrameButton(QFrame):
     """
     Simple clickable frame used instead of QPushButton.
-    Emits `clicked` when pressed with the mouse (or programmatically later).
+    Emits `clicked` when pressed with the mouse.
     """
     clicked = Signal()
 
@@ -17,20 +17,16 @@ class FrameButton(QFrame):
         self._label.setAlignment(Qt.AlignCenter)
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 4, 8, 4)
+        # No internal padding so the frame can visually touch edges if needed
+        lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(self._label)
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
         self.setCursor(Qt.PointingHandCursor)
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
-        # You can style these via global stylesheet:
-        # FrameButton {
-        #     background-color: ...;
-        #     border-radius: ...;
-        # }
-        # or by objectName if you set one.
+        # Button keeps its natural size, does not eat all extra space
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def setText(self, text: str):
         self._label.setText(text)
@@ -49,20 +45,15 @@ class SessionControlWidget(QWidget):
     Bottom control pad for the TMS session.
 
     Frame "buttons" in this order (left to right):
-      - Protocol
+      - Protocol   (pinned to left edge)
       - MT
       - Toggle Theme
       - Stop
-      - Start/Pause (toggles label)
+      - Start/Pause (pinned to right edge)
 
-    Signals:
-      - startRequested
-      - stopRequested
-      - pauseRequested
-      - protocolRequested
-      - mtRequested
-      - themeToggleRequested
+    MT / Toggle Theme / Stop are centered as a group.
     """
+
     startRequested = Signal()
     stopRequested = Signal()
     pauseRequested = Signal()
@@ -77,39 +68,62 @@ class SessionControlWidget(QWidget):
         self._running = False
         self._paused = False
 
-        # Left side: protocol & MT & theme buttons
+        # Let this widget expand horizontally so first/last can reach edges
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        # --- Create all buttons ---
         self.protocol_frame = FrameButton("Protocol", self)
         self.mt_frame = FrameButton("MT", self)
         self.theme_frame = FrameButton("Toggle Theme", self)
-
-        # Right side: stop + start/pause
         self.stop_frame = FrameButton("Stop", self)
         self.start_pause_frame = FrameButton("Start", self)
 
-        # Optional object names for styling if you want per-button styles
-        self.protocol_frame.setObjectName("protocol_frame")
-        self.mt_frame.setObjectName("mt_frame")
-        self.theme_frame.setObjectName("theme_frame")
-        self.stop_frame.setObjectName("stop_frame")
-        self.start_pause_frame.setObjectName("start_pause_frame")
+        for btn in (
+            self.protocol_frame,
+            self.mt_frame,
+            self.theme_frame,
+            self.stop_frame,
+            self.start_pause_frame,
+        ):
+            btn.setMinimumWidth(120)
+            btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
-        # Layout: (protocol , MT , Toggle Theme, Stop, Start/Pause)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
+        # === MAIN LAYOUT ===
+        main_lay = QHBoxLayout(self)
+        main_lay.setContentsMargins(0, 0, 0, 0)  # no outer margins
+        main_lay.setSpacing(0)                   # spacing handled by inner layout
 
-        lay.addWidget(self.protocol_frame)
-        lay.addWidget(self.mt_frame)
-        lay.addWidget(self.theme_frame)
-        lay.addStretch(1)
-        lay.addWidget(self.stop_frame)
-        lay.addWidget(self.start_pause_frame)
+        # First and last: pinned to left/right
+        first_btn = self.protocol_frame
+        last_btn = self.start_pause_frame
 
-        # wiring main actions
+        # Middle group: centered
+        center_buttons = [self.theme_frame]
+
+        center_lay = QHBoxLayout()
+        center_lay.setContentsMargins(0, 0, 0, 0)
+        center_lay.setSpacing(35)  # distance between middle buttons
+        for btn in center_buttons:
+            center_lay.addWidget(btn)
+
+        # Left, center, right layout:
+        # [ first_btn ][ stretch ][ center_lay ][ stretch ][ last_btn ]
+        main_lay.addWidget(first_btn)
+        main_lay.setSpacing(8)
+        main_lay.addWidget(self.mt_frame)
+        main_lay.addStretch(1)
+
+        if center_buttons:
+            main_lay.addLayout(center_lay)
+            main_lay.addStretch(1)
+
+        main_lay.addWidget(self.stop_frame)
+        main_lay.setSpacing(8)  # space between stop and start/pause 
+        main_lay.addWidget(last_btn)
+
+        # --- Connections ---
         self.stop_frame.clicked.connect(self._on_stop_clicked)
         self.start_pause_frame.clicked.connect(self._on_start_pause_clicked)
-
-        # wiring extra actions
         self.protocol_frame.clicked.connect(self._on_protocol_clicked)
         self.mt_frame.clicked.connect(self._on_mt_clicked)
         self.theme_frame.clicked.connect(self._on_theme_clicked)
@@ -130,9 +144,7 @@ class SessionControlWidget(QWidget):
             # when not running, treat as 'Start' even if paused flag is True
             self.start_pause_frame.setText("Start")
 
-        # You can also tweak styles based on running/paused with stylesheets.
-
-    def get_state(self):
+    def get_state(self) -> str:
         """
         Returns the current label of the start/pause control:
         'Start' or 'Pause'.
@@ -152,14 +164,12 @@ class SessionControlWidget(QWidget):
 
     def _on_stop_clicked(self):
         self.stopRequested.emit()
-        # Owner (ParamsPage) should call set_state() after it processes stop.
 
     def _on_start_pause_clicked(self):
         if self._running:
             self.pauseRequested.emit()
         else:
             self.startRequested.emit()
-        # Owner should update state via set_state() based on outcome.
 
     def _on_protocol_clicked(self):
         self.protocolRequested.emit()
@@ -169,3 +179,26 @@ class SessionControlWidget(QWidget):
 
     def _on_theme_clicked(self):
         self.themeToggleRequested.emit()
+
+
+# Optional: tiny test harness
+if __name__ == "__main__":
+    import sys
+    from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout
+
+    app = QApplication(sys.argv)
+    w = QMainWindow()
+
+    central = QWidget()
+    lay = QVBoxLayout(central)
+    lay.setContentsMargins(0, 0, 0, 0)
+
+    sc = SessionControlWidget()
+    # IMPORTANT: don't do alignment=Qt.AlignCenter here,
+    # or you’ll break the edge hugging.
+    lay.addWidget(sc)
+
+    w.setCentralWidget(central)
+    w.resize(800, 120)
+    w.show()
+    sys.exit(app.exec())
