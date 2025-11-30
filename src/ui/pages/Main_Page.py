@@ -792,17 +792,7 @@ class ParamsPage(QWidget):
             self._set_session_state(SessionState.RUNNING)
 
             # --- PULSE WIDGET CONTROL ---
-            if is_resume:
-                # If resuming, call resume if available, otherwise fallback to start
-                if hasattr(self.pulse_widget, "resume"):
-                    self.pulse_widget.resume()
-                elif hasattr(self.pulse_widget, "start"):
-                    self.pulse_widget.start()
-            else:
-                # Fresh start
-                if hasattr(self.pulse_widget, "start"):
-                    self.pulse_widget.start()
-
+            self.pulse_widget.start()
             # Update UI Controls (Change button text to 'Pause', etc.)
             self.session_controls.set_state(running=True, paused=False)
             self._enter_remaining_mode()
@@ -820,8 +810,7 @@ class ParamsPage(QWidget):
             self._set_session_state(SessionState.PAUSED)
 
             # --- PULSE WIDGET CONTROL ---
-            if hasattr(self.pulse_widget, "pause"):
-                self.pulse_widget.pause()
+            self.pulse_widget.pause()
 
             # Update UI Controls (Change button text to 'Resume', etc.)
             self.session_controls.set_state(running=False, paused=True)
@@ -840,8 +829,7 @@ class ParamsPage(QWidget):
             self._set_session_state(SessionState.IDLE)
 
             # --- PULSE WIDGET CONTROL ---
-            if hasattr(self.pulse_widget, "stop"):
-                self.pulse_widget.stop()
+            self.pulse_widget.stop()
 
             # Reset UI Controls (Change button text to 'Start')
             self.session_controls.set_state(running=False, paused=False)
@@ -1409,15 +1397,16 @@ class ParamsPage(QWidget):
 
     def _manage_state_from_uc(self, val: int):
         self._uC_State = val
-        # if self.session_state == SessionState.RUNNING or self.session_state == SessionState.PAUSED:
-        if val == 1: # Set Parameters
-            self._set_session_state(SessionState.IDLE)
+        if val == 1: # Idle
+            if self.session_state == SessionState.RUNNING or self.session_state == SessionState.PAUSED:
+                if val == 1: # Set Parameters
+                    self._set_session_state(SessionState.IDLE)
 
-            if hasattr(self.pulse_widget, "stop"):
-                self.pulse_widget.stop()
+                    if hasattr(self.pulse_widget, "stop"):
+                        self.pulse_widget.stop()
 
-            self.session_controls.set_state(running=False, paused=False)
-            self._exit_remaining_mode()
+                    self.session_controls.set_state(running=False, paused=False)
+                    self._exit_remaining_mode()
 
 
 
