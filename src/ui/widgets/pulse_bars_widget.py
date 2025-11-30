@@ -603,13 +603,13 @@ class PulseBarsWidget(QWidget):
             self._ipi_ms = float(getattr(proto, "inter_pulse_interval_ms", 0.0))
             self._burst_pulses_count = int(getattr(proto, "burst_pulses_count", 1))
             
-            self._amp = f"{int(getattr(proto, 'intensity_percent_of_mt', 0))}%"
+            self._amp = f"{int(getattr(proto, 'absolute_intensity', 0))}%"
 
             # --- KEY CALCULATION ---
             self._train_duration_s = self._compute_train_duration_s()
             self._total_session_s = self._compute_total_duration_s()
 
-            self.stop() # Reset state
+            #self.stop() # Reset state
 
             # Init View
             self.train_view.set_burst_state(
