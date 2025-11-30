@@ -1,5 +1,5 @@
 from typing import Optional, Tuple, Any, Dict
-
+import time
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -91,6 +91,7 @@ class ParamsPage(QWidget):
         self.igbt_normal_Temperature: bool = True
         self.resistor_normal_Temperature: bool = True
 
+        self._stimulation_start_time = 0.0
 
         self.system_enabled: bool = False
 
@@ -778,6 +779,8 @@ class ParamsPage(QWidget):
             # Update UI Controls (Change button text to 'Pause', etc.)
             self.session_controls.set_state(running=True, paused=False)
 
+            self._stimulation_start_time = time.time()
+
             if self.backend:
                 self.backend.start_session()
 
@@ -813,6 +816,8 @@ class ParamsPage(QWidget):
 
             # Reset UI Controls (Change button text to 'Start')
             self.session_controls.set_state(running=False, paused=False)
+
+            self._stimulation_start_time = 0.0
 
             if self.backend:
                 self.backend.stop_session()
@@ -1378,13 +1383,14 @@ class ParamsPage(QWidget):
         self._uC_State = val
         if val == 1: # Idle
             if self.session_state == SessionState.RUNNING or self.session_state == SessionState.PAUSED:
-                if val == 1: # Set Parameters
-                    self._set_session_state(SessionState.IDLE)
+                    elapsed_time = time.time() - self._stimulation_start_time
+                    if elapsed_time > 0.5:
+                        self._set_session_state(SessionState.IDLE)
+                        self._stimulation_start_time = 0.0
+                        if hasattr(self.pulse_widget, "stop"):
+                            self.pulse_widget.stop()
 
-                    if hasattr(self.pulse_widget, "stop"):
-                        self.pulse_widget.stop()
-
-                    self.session_controls.set_state(running=False, paused=False)
+                        self.session_controls.set_state(running=False, paused=False)
 
 
 
