@@ -5,7 +5,7 @@ from typing import Optional
 from PySide6.QtCore import Qt, QRectF, QTimer, QSize, Signal
 from PySide6.QtGui import QPainter, QPen, QFont, QPalette
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, QProgressBar
 )
 
 ###############################################################################
@@ -123,6 +123,8 @@ class PulseTrainView(QWidget):
         self._pulses_per_train = 1
         self._freq_hz = 1.0
         self._amplitude_label = "120"
+
+        
 
         # burst-level
         self._burst_pulses_count = 1          # 1..5 from TMSProtocol.burst_pulses_count
@@ -271,6 +273,26 @@ class PulseTrainView(QWidget):
 
         # y_label is already where we want the text baseline
         painter.drawText(int(tx), int(y_label), text)
+
+    def get_usable_left(self) -> float:
+        amp_gutter_w = 24
+        usable_left = amp_gutter_w + 10
+        return usable_left
+    
+    def get_usable_width(self) -> float:
+        W = self.width()
+        amp_gutter_w = 24
+        usable_left = amp_gutter_w + 10
+        usable_right = W - 10
+        usable_w = max(usable_right - usable_left, 1)
+        return usable_w
+    
+    def get_baseline_y(self) -> float:
+        H = self.height()
+        baseline_y = H * 0.6
+        return baseline_y
+    
+
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -445,6 +467,9 @@ class PulseTrainView(QWidget):
         play_y1 = baseline_y + 20
         painter.drawLine(int(play_x), int(play_y0), int(play_x), int(play_y1))
 
+        
+
+
 
 ###############################################################################
 # SessionStatusBar
@@ -504,6 +529,10 @@ class PulseBarsWidget(QWidget):
 
             self.train_view = PulseTrainView(self)
             self.rest_circle = CountdownCircle(self)
+            self.progressbar = QProgressBar(self)
+            self.progressbar.setValue(100)
+            
+            
             
             # Layout
             layout = QVBoxLayout(self)
@@ -513,9 +542,15 @@ class PulseBarsWidget(QWidget):
             self.view_layout.setContentsMargins(0,0,0,0)
             self.view_layout.addWidget(self.train_view)
             self.view_layout.addWidget(self.rest_circle)
-            
-            layout.addWidget(self.view_container)
 
+            layout.setContentsMargins(0, 0, 0, 25)
+            layout.addWidget(self.view_container)
+            
+            prog_row = QHBoxLayout()
+            prog_row.addSpacing(34)  # Align left with usable_left
+            prog_row.addWidget(self.progressbar)
+            prog_row.addSpacing(10)  # Align right with usable_right
+            layout.addLayout(prog_row)
             # Timer
             self.timer = QTimer(self)
             self.timer.setInterval(50) # 20Hz update rate
@@ -541,6 +576,7 @@ class PulseBarsWidget(QWidget):
             
             # Init
             self._show_train_mode()
+            self.sessionRemainingChanged.connect(self._update_progress)
 
     # ---------- timing helpers ----------
 
@@ -826,6 +862,11 @@ class PulseBarsWidget(QWidget):
         self.train_view.setVisible(False)
         self.rest_circle.setVisible(True)
 
+    def sizeHint(self) -> QSize:
+        tv_hint = self.train_view.sizeHint()
+        prog_h = self.progressbar.sizeHint().height()
+        return QSize(tv_hint.width(), tv_hint.height() + prog_h)
+
     # ---------- util ----------
 
     @staticmethod
@@ -834,3 +875,8 @@ class PulseBarsWidget(QWidget):
         m = total // 60
         s = total % 60
         return f"{m:02d}:{s:02d}"
+    
+    def _update_progress(self, rem_pulses: int, total_pulses: int, rem_s: float, total_s: float):
+        if total_pulses > 0:
+            progress = int(100 * (1 - (rem_pulses / total_pulses)))
+            self.progressbar.setValue(progress)
