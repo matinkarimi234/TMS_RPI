@@ -174,10 +174,6 @@ class ParamsPage(QWidget):
         self.protocol_param_list = NavigationListWidget()
 
 
-        # Remaining gauge mode disabled, but we keep connection
-        self.pulse_widget.sessionRemainingChanged.connect(
-            self._update_remaining_gauge
-        )
 
         # Gauge for MT page (0–100 % MSO)
         self.mt_gauge = IntensityGauge(self)
@@ -441,20 +437,6 @@ class ParamsPage(QWidget):
     # ------------------------------------------------------------------
     #   Remaining gauge mode helpers (disabled)
     # ------------------------------------------------------------------
-    def _enter_remaining_mode(self) -> None:
-        return
-
-    def _exit_remaining_mode(self) -> None:
-        return
-
-    def _update_remaining_gauge(
-        self,
-        remaining_pulses: int,
-        total_pulses: int,
-        remaining_seconds: float,
-        total_seconds: float,
-    ) -> None:
-        return
 
     # ------------------------------------------------------------------
     #   Param ranges / sync
@@ -795,7 +777,6 @@ class ParamsPage(QWidget):
             self.pulse_widget.start()
             # Update UI Controls (Change button text to 'Pause', etc.)
             self.session_controls.set_state(running=True, paused=False)
-            self._enter_remaining_mode()
 
             if self.backend:
                 self.backend.start_session()
@@ -814,7 +795,6 @@ class ParamsPage(QWidget):
 
             # Update UI Controls (Change button text to 'Resume', etc.)
             self.session_controls.set_state(running=False, paused=True)
-            self._enter_remaining_mode()
 
             if self.backend:
                 self.backend.pause_session()
@@ -833,7 +813,6 @@ class ParamsPage(QWidget):
 
             # Reset UI Controls (Change button text to 'Start')
             self.session_controls.set_state(running=False, paused=False)
-            self._exit_remaining_mode()
 
             if self.backend:
                 self.backend.stop_session()
@@ -1406,7 +1385,6 @@ class ParamsPage(QWidget):
                         self.pulse_widget.stop()
 
                     self.session_controls.set_state(running=False, paused=False)
-                    self._exit_remaining_mode()
 
 
 
