@@ -683,7 +683,7 @@ class PulseBarsWidget(QWidget):
 
         if had_activity:
             # when fully stopped, emit "back to all remaining"
-            self._emit_remaining(elapsed_s=0.0)
+            self._emit_remaining(elapsed=0.0)
 
     # ---------- cycle state ----------
 
