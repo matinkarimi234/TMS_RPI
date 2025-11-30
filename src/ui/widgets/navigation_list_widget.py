@@ -12,6 +12,8 @@ class NavigationListWidget(QListWidget):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setMinimumWidth(150)
+        self.setMaximumWidth(255)
         
         self.setObjectName("NavigationListWidget")
 

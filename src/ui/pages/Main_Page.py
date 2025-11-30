@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QStackedLayout,
+    QListWidget,
     QListWidgetItem,
-    QSizePolicy,
 )
 
 from app.theme_manager import ThemeManager
@@ -22,8 +22,7 @@ from ui.widgets.temperature_widget import CoilTemperatureWidget
 from ui.widgets.session_control_widget import SessionControlWidget
 from services.uart_backend import Uart_Backend, uC_State
 from services.gpio_backend import GPIO_Backend
-from ui.widgets.session_info_widget import SessionInfoWidget
-
+from ui.widgets.session_info_widget import SessionInfoWidget 
 from config.settings import COIL_WARNING_TEMPERATURE_THRESHOLD, COIL_DANGER_TEMPERATURE_THRESHOLD
 from config.settings import IGBT_WARNING_TEMPERATURE_THRESHOLD, IGBT_DANGER_TEMPERATURE_THRESHOLD
 from config.settings import RESISTOR_WARNING_TEMPERATURE_THRESHOLD, RESISTOR_DANGER_TEMPERATURE_THRESHOLD
@@ -154,31 +153,26 @@ class ParamsPage(QWidget):
 
         self.pulse_widget = PulseBarsWidget(self)
         self.list_widget = NavigationListWidget()
+        
         self.list_widget.setCurrentRow(0)
 
 
         # Protocol selection widgets
         self.protocol_list_widget = NavigationListWidget(self)
-        self.protocol_list_widget.setSpacing(4)
-        self.protocol_list_widget.setUniformItemSizes(True)
         self.protocol_list_widget.itemSelectionChanged.connect(
             self._on_protocol_selected
         )
+        self.protocol_list_widget.setObjectName("protocol_list_widget")
 
         self.protocol_placeholder = QLabel("Protocol preview", self)
         self.protocol_placeholder.setAlignment(Qt.AlignCenter)
-        self.protocol_placeholder.setMinimumHeight(220)
-        self.protocol_placeholder.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
+        self.protocol_placeholder.setStyleSheet(
+            "border: 1px dashed rgba(255, 255, 255, 80);"
+            "color: rgba(255, 255, 255, 160);"
         )
 
         self.protocol_param_list = NavigationListWidget()
-        self.protocol_param_list.setSpacing(4)
-        self.protocol_param_list.setUniformItemSizes(True)
 
-        shared_param_font = self.list_widget.font()
-        self.protocol_list_widget.setFont(shared_param_font)
-        self.protocol_param_list.setFont(shared_param_font)
 
         # Remaining gauge mode disabled, but we keep connection
         self.pulse_widget.sessionRemainingChanged.connect(
@@ -201,7 +195,7 @@ class ParamsPage(QWidget):
         # Top panel
         self.top_panel = QWidget()
         self.top_panel.setFixedHeight(80)
-        self.top_panel.setStyleSheet("background-color: rgba(128,128,128,15%);")
+#
 
         self.coil_temp_widget = CoilTemperatureWidget(
             warning_threshold=COIL_WARNING_TEMPERATURE_THRESHOLD,
@@ -223,63 +217,56 @@ class ParamsPage(QWidget):
         top_layout.setContentsMargins(8, 5, 8, 5)
         top_layout.setSpacing(8)
 
-        # Left: new session info
         top_layout.addWidget(self.session_info, alignment=Qt.AlignLeft | Qt.AlignVCenter)
-
-        # Middle: stretch
         top_layout.addStretch(1)
+        self.coil_temp_widget.setMaximumWidth(int(self.coil_temp_widget.height() * 1.4))
 
-        # Right: coil temperature widget
-        self.coil_temp_widget.setMaximumWidth(
-            int(self.coil_temp_widget.height() * 1.4)
-        )
+
         top_layout.addWidget(self.coil_temp_widget, alignment=Qt.AlignRight | Qt.AlignVCenter)
 
         # --- Bottom row: session controls ---
         bottom_layout = QHBoxLayout(self.bottom_panel)
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
-        bottom_layout.addStretch(1)
-        bottom_layout.addWidget(self.session_controls, alignment=Qt.AlignHCenter)
-        bottom_layout.addStretch(1)
+        # no horizontal margins, no extra spacing: let SessionControlWidget own the layout
+        bottom_layout.setContentsMargins(8, 0, 8, 0)
+        bottom_layout.setSpacing(0)
+        bottom_layout.addWidget(self.session_controls)  # <-- no AlignHCenter, no stretches
 
         # --- NORMAL PAGE content: [Gauge] [PulseBars] [Param list] ---
         normal_page = QWidget()
         normal_content_layout = QHBoxLayout(normal_page)
-        normal_content_layout.setContentsMargins(0, 0, 0, 0)
+        normal_content_layout.setContentsMargins(8, 5, 8, 5)
 
         left_col = QVBoxLayout()
         left_col.addStretch(1)
         left_col.addWidget(self.intensity_gauge, alignment=Qt.AlignCenter)
-        left_col.addStretch(1)
-        normal_content_layout.addLayout(left_col, stretch=0)
+        left_col.addStretch(2)
+        normal_content_layout.addLayout(left_col, stretch=1)
 
         normal_content_layout.addWidget(self.pulse_widget, stretch=1)
 
         right_col = QVBoxLayout()
-        right_col.addWidget(self.list_widget, stretch=1)
+        right_col.addWidget(self.list_widget, stretch=0)
         normal_content_layout.addLayout(right_col, stretch=1)
 
-        # --- MT PAGE content: (gauge(MT), Picture, Text) ---
+        # --- MT / PROTOCOL pages unchanged ...
         mt_page = self._create_mt_page()
-
-
-
-        # --- Protocol page content ---
         protocol_page = self._create_protocols_page()
 
-        # --- Central stack: NORMAL (0) / MT (1) / PROTOCOLS (2) ---
-
-
         self.main_stack = QStackedLayout()
-        self.main_stack.addWidget(normal_page)   # index 0
-        self.main_stack.addWidget(mt_page)       # index 1
-        self.main_stack.addWidget(protocol_page) # index 2
+        self.main_stack.addWidget(normal_page)
+        self.main_stack.addWidget(mt_page)
+        self.main_stack.addWidget(protocol_page)
 
         # --- Assemble page layout ---
         main_layout = QVBoxLayout(self)
+        # important: remove outer margins so the bottom bar can span fully
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
         main_layout.addWidget(self.top_panel)
         main_layout.addLayout(self.main_stack, stretch=1)
         main_layout.addWidget(self.bottom_panel)
+
 
     def _create_mt_page(self) -> QWidget:
         """
@@ -289,14 +276,14 @@ class ParamsPage(QWidget):
         """
         page = QWidget()
         layout = QHBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(8, 5, 8, 5)
 
         # Left: MT gauge
         left_col = QVBoxLayout()
         left_col.addStretch(1)
         left_col.addWidget(self.mt_gauge, alignment=Qt.AlignCenter)
-        left_col.addStretch(1)
-        layout.addLayout(left_col, stretch=0)
+        left_col.addStretch(2)
+        layout.addLayout(left_col, stretch=1)
 
         # Middle: stretch (empty) – keeps gauge in same horizontal band
         layout.addStretch(1)
@@ -337,47 +324,17 @@ class ParamsPage(QWidget):
         page = QWidget()
         layout = QHBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
 
-        # Left: available protocols (compact, theme-driven)
+        # Left: available protocols
         left_col = QVBoxLayout()
-        left_col.setContentsMargins(0, 0, 0, 0)
-        left_col.setSpacing(8)
-        self.protocol_list_widget.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Preferred
-        )
-        left_col.addWidget(self.protocol_list_widget, stretch=0)
+        left_col.addWidget(self.protocol_list_widget, stretch=1)
         layout.addLayout(left_col, stretch=1)
 
-        # Middle: placeholder (top spacer left empty for future use)
-        middle_col = QVBoxLayout()
-        middle_col.setContentsMargins(0, 0, 0, 0)
-        middle_col.setSpacing(8)
-        middle_col.addStretch(1)
-        middle_col.addWidget(self.protocol_placeholder, stretch=0, alignment=Qt.AlignTop)
-        layout.addLayout(middle_col, stretch=1)
-
-        # Right: parameter list mirror (shares width with other columns)
+        # Right: placeholder
         right_col = QVBoxLayout()
-        right_col.setContentsMargins(0, 0, 0, 0)
-        right_col.setSpacing(8)
-        self.protocol_param_list.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Preferred
-        )
-        right_col.addWidget(self.protocol_param_list, stretch=0)
+        self.protocol_placeholder.setFixedSize(280, 280)
+        right_col.addWidget(self.protocol_placeholder, alignment=Qt.AlignCenter)
         layout.addLayout(right_col, stretch=1)
-
-        # Align column widths with the coil temperature widget and keep compact heights
-        column_min_width = max(self.coil_temp_widget.sizeHint().width(), 220)
-        for widget in (
-            self.protocol_list_widget,
-            self.protocol_placeholder,
-            self.protocol_param_list,
-        ):
-            widget.setMinimumWidth(column_min_width)
-            widget.setMaximumWidth(column_min_width)
-
-        self.protocol_param_list.setMaximumHeight(self.protocol_placeholder.minimumHeight())
 
         return page
 
@@ -471,8 +428,6 @@ class ParamsPage(QWidget):
             self.coil_temp_widget.applyTheme(self.theme_manager, self.current_theme)
         except Exception:
             pass
-
-        self._update_protocol_placeholder_style(self.current_theme)
 
         # Adjust intensity range based on MT
         self._update_intensity_gauge_range()
@@ -790,13 +745,20 @@ class ParamsPage(QWidget):
         self._modify_value(float(step))
 
     def _on_nav_up(self) -> None:
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state == SessionState.MT_EDIT:
             return
+        if self.session_state == SessionState.PROTOCOL_EDIT:
+            self.protocol_list_widget.select_previous()
+
+
         self.list_widget.select_previous()
 
     def _on_nav_down(self) -> None:
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state == SessionState.MT_EDIT:
             return
+        if self.session_state == SessionState.PROTOCOL_EDIT:
+            self.protocol_list_widget.select_next()
+
         self.list_widget.select_next()
 
     def _single_pulse_requested(self) -> None:
@@ -816,76 +778,109 @@ class ParamsPage(QWidget):
         self.session_active = (new_state == SessionState.RUNNING)
         self.session_paused = (new_state == SessionState.PAUSED)
 
-    def _start_session(self) -> None:
-        if not self.enabled or not self.coil_connected:
-            return
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
-            return
+    def _start_session(self, is_resume: bool = False) -> None:
+            """
+            Transitions the UI to RUNNING state. 
+            Triggers the pulse widget to either start fresh or resume.
+            """
+            if not self.enabled or not self.coil_connected:
+                return
+            # Prevent starting if we are currently editing parameters
+            if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+                return
 
-        self._set_session_state(SessionState.RUNNING)
+            self._set_session_state(SessionState.RUNNING)
 
-        if hasattr(self.pulse_widget, "start"):
-            self.pulse_widget.start()
+            # --- PULSE WIDGET CONTROL ---
+            if is_resume:
+                # If resuming, call resume if available, otherwise fallback to start
+                if hasattr(self.pulse_widget, "resume"):
+                    self.pulse_widget.resume()
+                elif hasattr(self.pulse_widget, "start"):
+                    self.pulse_widget.start()
+            else:
+                # Fresh start
+                if hasattr(self.pulse_widget, "start"):
+                    self.pulse_widget.start()
 
-        self.session_controls.set_state(running=True, paused=False)
-        self._enter_remaining_mode()
+            # Update UI Controls (Change button text to 'Pause', etc.)
+            self.session_controls.set_state(running=True, paused=False)
+            self._enter_remaining_mode()
 
-        if self.backend:
-            self.backend.start_session()
+            if self.backend:
+                self.backend.start_session()
 
     def _pause_session(self) -> None:
-        if self.session_state != SessionState.RUNNING:
-            return
+            """
+            Transitions UI to PAUSED state and freezes the pulse widget.
+            """
+            if self.session_state != SessionState.RUNNING:
+                return
 
-        self._set_session_state(SessionState.PAUSED)
+            self._set_session_state(SessionState.PAUSED)
 
-        if hasattr(self.pulse_widget, "pause"):
-            self.pulse_widget.pause()
+            # --- PULSE WIDGET CONTROL ---
+            if hasattr(self.pulse_widget, "pause"):
+                self.pulse_widget.pause()
 
-        self.session_controls.set_state(running=False, paused=True)
-        self._enter_remaining_mode()
+            # Update UI Controls (Change button text to 'Resume', etc.)
+            self.session_controls.set_state(running=False, paused=True)
+            self._enter_remaining_mode()
 
-        if self.backend:
-            self.backend.pause_session()
+            if self.backend:
+                self.backend.pause_session()
 
     def _stop_session(self) -> None:
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
-            return
+            """
+            Transitions UI to IDLE state and resets the pulse widget.
+            """
+            if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+                return
 
-        self._set_session_state(SessionState.IDLE)
+            self._set_session_state(SessionState.IDLE)
 
-        if hasattr(self.pulse_widget, "stop"):
-            self.pulse_widget.stop()
+            # --- PULSE WIDGET CONTROL ---
+            if hasattr(self.pulse_widget, "stop"):
+                self.pulse_widget.stop()
 
-        self.session_controls.set_state(running=False, paused=False)
-        self._exit_remaining_mode()
+            # Reset UI Controls (Change button text to 'Start')
+            self.session_controls.set_state(running=False, paused=False)
+            self._exit_remaining_mode()
 
-        if self.backend:
-            self.backend.stop_session()
+            if self.backend:
+                self.backend.stop_session()
 
     # ------------------------------------------------------------------
     #   Session control handlers
     # ------------------------------------------------------------------
     def _on_session_start_requested(self) -> None:
-        # MT mode: Start/Pause act as "Apply MT" + idle ONLY
-        if self.session_state == SessionState.MT_EDIT:
-            self._on_mt_apply()
-            self._set_backend_state("idle", force=True)
-            return
+            # MT/Protocol Edit Mode Logic (No change)
+            if self.session_state == SessionState.MT_EDIT:
+                self._on_mt_apply()
+                self._set_backend_state("idle", force=True)
+                return
 
-        if self.session_state == SessionState.PROTOCOL_EDIT:
-            self._on_protocol_apply()
-            self._set_backend_state("idle", force=True)
-            return
+            if self.session_state == SessionState.PROTOCOL_EDIT:
+                self._on_protocol_apply()
+                self._set_backend_state("idle", force=True)
+                return
 
+            # Safety Checks
+            if not self.enabled or not self.coil_connected:
+                return
 
-        if not self.enabled or not self.coil_connected:
-            return
-
-        if self.session_state in (SessionState.IDLE, SessionState.PAUSED):
-            self._start_session()
-        elif self.session_state == SessionState.RUNNING:
-            self._pause_session()
+            # --- MAIN STATE MACHINE LOGIC ---
+            if self.session_state == SessionState.IDLE:
+                # Fresh Start
+                self._start_session(is_resume=False)
+                
+            elif self.session_state == SessionState.PAUSED:
+                # Resume from Pause
+                self._start_session(is_resume=True)
+                
+            elif self.session_state == SessionState.RUNNING:
+                # Pause the session
+                self._pause_session()
 
     def _on_session_stop_requested(self) -> None:
         if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
@@ -1348,24 +1343,7 @@ class ParamsPage(QWidget):
         except Exception as e:
             print("Couldn't apply theme to gauge/coil widget:", e)
 
-        self._update_protocol_placeholder_style(theme_name)
         self._update_bottom_panel_style()
-
-    def _update_protocol_placeholder_style(self, theme_name: Optional[str] = None) -> None:
-        if not self.theme_manager:
-            return
-
-        theme = theme_name or self.current_theme
-        border_color = self.theme_manager.get_color(
-            theme, "BORDER_COLOR", "rgba(255, 255, 255, 0.25)"
-        )
-        text_color = self.theme_manager.get_color(
-            theme, "TEXT_COLOR_SECONDARY", "rgba(255, 255, 255, 0.6)"
-        )
-
-        self.protocol_placeholder.setStyleSheet(
-            f"border: 1px dashed {border_color};" f"color: {text_color};"
-        )
 
     def _toggle_theme(self) -> None:
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
