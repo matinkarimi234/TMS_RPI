@@ -355,8 +355,8 @@ class IntensityGauge(QWidget):
             c = QColor(self._track_override)
         else:
             c = self.palette().windowText().color()
+            
         col = QColor(c)
-        col.setAlpha(90)
         return col
 
     @staticmethod
