@@ -374,7 +374,7 @@ class PulseTrainView(QWidget):
         font_ann.setPointSizeF(font_ann.pointSizeF() * 0.9)
         painter.setFont(font_ann)
 
-        burst_label_ms = f"{burst_total_ms:.1f} ms"
+        burst_label_ms = f"{burst_total_ms // 1000:.1f} seconds"
         bracket_top_y = pulse_top_y - 15
         bracket_text_y = bracket_top_y - 3
         self._draw_bracket_with_label_above(
