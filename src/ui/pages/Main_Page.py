@@ -516,7 +516,7 @@ class ParamsPage(QWidget):
             return
 
         proto = self.current_protocol
-        self.pulse_widget.set_protocol(proto)
+        # self.pulse_widget.set_protocol(proto)
 
         # Enforce single-burst rule
         try:
