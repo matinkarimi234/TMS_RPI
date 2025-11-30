@@ -595,8 +595,8 @@ class PulseBarsWidget(QWidget):
                 ipi_s = self._ipi_ms / 1000.0
                 if events == 0:
                     return 0.0
-                inter_event_time = (events - 1) / freq
-                intra_last_burst_time = (B - 1) * ipi_s
+                inter_event_time = (events) / freq
+                intra_last_burst_time = (B) * ipi_s
                 return inter_event_time + intra_last_burst_time
 
     def _compute_total_duration_s(self) -> float:
