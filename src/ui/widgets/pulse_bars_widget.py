@@ -581,23 +581,23 @@ class PulseBarsWidget(QWidget):
     # ---------- timing helpers ----------
 
     def _compute_train_duration_s(self) -> float:
-        """
-        Calculates the active time of ONE train (start of first pulse to start of last pulse).
-        
-        Logic matches the C code structure:
-        - Treats pulses_per_train as total pulses (P).
-        - burst_pulses_count as pulses per burst (B).
-        - Allows for partial last burst if P % B != 0.
-        - Total time = (P - num_events) * ipi_s + (num_events - 1) * (1 / freq)
-        """
-        P = max(1, self._pulses_per_train)
-        B = max(1, self._burst_pulses_count)
-        freq = max(0.1, self._freq_hz)
-        ipi_s = self._ipi_ms / 1000.0
-        num_events = (P + B - 1) // B
-        intra_intervals = P - num_events
-        inter_intervals = num_events - 1 if num_events > 0 else 0
-        return intra_intervals * ipi_s + inter_intervals * (1.0 / freq)
+                """
+                Calculates the active time of ONE train (start of first pulse to start of last pulse).
+                
+                Logic:
+                1. Determine number of bursts required to fit 'pulses_per_train'.
+                2. Time = (NumBursts - 1) * (1/Freq) + Duration_of_Last_Burst
+                3. Duration_of_Last_Burst = (PulsesInLastBurst - 1) * IPI
+                """
+                events = max(1, self._pulses_per_train)
+                B = max(1, self._burst_pulses_count)
+                freq = max(0.1, self._freq_hz)
+                ipi_s = self._ipi_ms / 1000.0
+                if events == 0:
+                    return 0.0
+                inter_event_time = (events - 1) / freq
+                intra_last_burst_time = (B - 1) * ipi_s
+                return inter_event_time + intra_last_burst_time
 
     def _compute_total_duration_s(self) -> float:
             """
