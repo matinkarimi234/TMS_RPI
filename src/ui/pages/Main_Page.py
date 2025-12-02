@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Any, Dict
 import time
 from pathlib import Path
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QSize
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,6 +36,9 @@ from config.settings import (
 # NEW helpers
 from ui.helpers.session_state import SessionState
 from ui.helpers.gpio_guard import GpioEventGuard
+
+
+GAUGE_COLUMN_WIDTH = 260  # fixed width so gauge x-position matches between pages
 
 
 class ParamsPage(QWidget):
@@ -187,8 +190,9 @@ class ParamsPage(QWidget):
         self.mt_gauge.setRange(0, 100)
 
         # Align MT gauge visually with intensity gauge
-        self.mt_gauge.setMinimumSize(self.intensity_gauge.minimumSize())
-        self.mt_gauge.setSizePolicy(self.intensity_gauge.sizePolicy())
+        gauge_size = QSize(220, 220)  # pick whatever works visually
+        self.intensity_gauge.setFixedSize(gauge_size)
+        self.mt_gauge.setFixedSize(gauge_size)
 
         # Single timeout row widget for MT page (right column)
         self.mt_timeout_widget = NavigationListWidget(self)
@@ -214,6 +218,23 @@ class ParamsPage(QWidget):
 
         self.session_controls = SessionControlWidget(self)
 
+    def _create_gauge_column_widget(self, gauge: QWidget) -> QWidget:
+        """
+        Wraps a gauge in a fixed-width column widget so that the
+        gauge x-position is identical on NORMAL and MT pages.
+        """
+        container = QWidget(self)
+        container.setFixedWidth(GAUGE_COLUMN_WIDTH)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addStretch(1)
+        layout.addWidget(gauge, alignment=Qt.AlignCenter)
+        layout.addStretch(1)
+
+        return container
+
     def _build_layout(self) -> None:
         """Wire widgets into layouts."""
         # --- Top layout ---
@@ -228,7 +249,6 @@ class ParamsPage(QWidget):
 
         # --- Bottom row: session controls ---
         bottom_layout = QHBoxLayout(self.bottom_panel)
-        # no horizontal margins, no extra spacing: let SessionControlWidget own the layout
         bottom_layout.setContentsMargins(16, 0, 8, 0)
         bottom_layout.setSpacing(0)
         bottom_layout.addWidget(self.session_controls)
@@ -238,14 +258,14 @@ class ParamsPage(QWidget):
         normal_content_layout = QHBoxLayout(normal_page)
         normal_content_layout.setContentsMargins(8, 5, 8, 5)
 
-        left_col = QVBoxLayout()
-        left_col.addStretch(1)
-        left_col.addWidget(self.intensity_gauge, alignment=Qt.AlignCenter)
-        left_col.addStretch(2)
-        normal_content_layout.addLayout(left_col, stretch=1)
+        # Left: gauge in fixed-width container
+        left_container = self._create_gauge_column_widget(self.intensity_gauge)
+        normal_content_layout.addWidget(left_container, stretch=0)
 
+        # Center: pulse widget
         normal_content_layout.addWidget(self.pulse_widget, stretch=1)
 
+        # Right: param list
         right_col = QVBoxLayout()
         right_col.addWidget(self.list_widget, stretch=0)
         normal_content_layout.addLayout(right_col, stretch=1)
@@ -274,14 +294,14 @@ class ParamsPage(QWidget):
     def _init_mt_timeout_row(self) -> None:
         """
         Create a single row that behaves like other param rows:
-        title + numeric value + range suffix (0.0–5.0 s, step 0.5 s).
+        title + numeric value + range suffix.
         """
         self.mt_timeout_widget.clear()
 
         title = "Single Delay"
-        value = 0.1           # default: 0.5 s
-        lo, hi = 0.0, 2.0     # allowed range (s)
-        step = 0.1            # increment (s)
+        value = 0.1          # default: 0.1 s
+        lo, hi = 0.0, 2.0    # allowed range (s)
+        step = 0.1           # increment (s)
         unit = "Seconds"
 
         self.mt_timeout_widget.add_item(
@@ -348,14 +368,11 @@ class ParamsPage(QWidget):
         page = QWidget()
         layout = QHBoxLayout(page)
         layout.setContentsMargins(8, 5, 8, 5)
-        layout.setSpacing(16)
+        #layout.setSpacing(16)
 
-        # Left: MT gauge
-        left_col = QVBoxLayout()
-        left_col.addStretch(1)
-        left_col.addWidget(self.mt_gauge, alignment=Qt.AlignCenter)
-        left_col.addStretch(2)
-        layout.addLayout(left_col, stretch=1)
+        # Left: MT gauge in the same fixed-width container
+        left_container = self._create_gauge_column_widget(self.mt_gauge)
+        layout.addWidget(left_container, stretch=0)
 
         # Center: image + text
         center_col = QVBoxLayout()
@@ -1429,17 +1446,15 @@ class ParamsPage(QWidget):
     def _toggle_theme(self) -> None:
         if self.current_theme == "dark":
             self.current_theme = "light"
-            
         else:
             self.current_theme = "dark"
-
 
         self._apply_theme_to_app(self.current_theme)
         if self.current_protocol:
             self._sync_ui_from_protocol()
 
     def _toggle_icons_on_theme(self, theme: str) -> None:
-        # Build an absolute path based on this file location
+        # Build an absolute path (adjust this to your real project layout if needed)
         icon_path = Path(f"src/assets/icons/User_{theme}.png")
 
         print("Loading user icon from:", icon_path.absolute())
