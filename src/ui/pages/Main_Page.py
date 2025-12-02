@@ -1389,6 +1389,11 @@ class ParamsPage(QWidget):
 
         self.system_enabled = self.enabled and self.coil_connected and normal_temp
 
+        # if we were in MT and system gets disabled, leave MT page <<<
+        if self.session_state == SessionState.MT_EDIT and not self.system_enabled:
+            self._exit_mt_mode()
+            return
+
         self._update_bottom_panel_style()
         self._set_start_stop_enabled(self.system_enabled)
         self._update_intensity_for_enable(self.system_enabled)
