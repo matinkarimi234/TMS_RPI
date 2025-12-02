@@ -1,7 +1,8 @@
 from typing import Optional, Tuple, Any, Dict
 import time
+from pathlib import Path
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QWidget,
@@ -9,7 +10,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QStackedLayout,
-    QListWidget,
     QListWidgetItem,
 )
 
@@ -20,13 +20,18 @@ from ui.widgets.pulse_bars_widget import PulseBarsWidget
 from ui.widgets.intensity_gauge import IntensityGauge, GaugeMode
 from ui.widgets.temperature_widget import CoilTemperatureWidget
 from ui.widgets.session_control_widget import SessionControlWidget
-from services.uart_backend import Uart_Backend, uC_State
+from services.uart_backend import Uart_Backend
 from services.gpio_backend import GPIO_Backend
-from ui.widgets.session_info_widget import SessionInfoWidget 
-from config.settings import COIL_WARNING_TEMPERATURE_THRESHOLD, COIL_DANGER_TEMPERATURE_THRESHOLD
-from config.settings import IGBT_WARNING_TEMPERATURE_THRESHOLD, IGBT_DANGER_TEMPERATURE_THRESHOLD
-from config.settings import RESISTOR_WARNING_TEMPERATURE_THRESHOLD, RESISTOR_DANGER_TEMPERATURE_THRESHOLD
-from config.settings import HARD_MAX_INTENSITY
+from ui.widgets.session_info_widget import SessionInfoWidget
+from config.settings import (
+    COIL_WARNING_TEMPERATURE_THRESHOLD,
+    COIL_DANGER_TEMPERATURE_THRESHOLD,
+    IGBT_WARNING_TEMPERATURE_THRESHOLD,
+    IGBT_DANGER_TEMPERATURE_THRESHOLD,
+    RESISTOR_WARNING_TEMPERATURE_THRESHOLD,
+    RESISTOR_DANGER_TEMPERATURE_THRESHOLD,
+    HARD_MAX_INTENSITY,
+)
 
 # NEW helpers
 from ui.helpers.session_state import SessionState
@@ -45,7 +50,7 @@ class ParamsPage(QWidget):
 
     MT mode:
       - Center stack switched to MT page:
-          [ MT gauge | image placeholder | text ]
+          [ MT gauge | image placeholder | text + single timeout ]
       - Bottom SessionControlWidget visually becomes:
           [Cancel ................. Apply]
     """
@@ -120,6 +125,9 @@ class ParamsPage(QWidget):
         # Backup for intensity percentage when entering MT
         self._prev_intensity_percent: Optional[float] = None
 
+        # Last time a single pulse was sent in MT mode (for timeout)
+        self._last_single_pulse_time: float = 0.0
+
         # --- Protocol mode state ---
         self._selected_protocol_name: Optional[str] = None
 
@@ -154,9 +162,7 @@ class ParamsPage(QWidget):
 
         self.pulse_widget = PulseBarsWidget(self)
         self.list_widget = NavigationListWidget()
-        
         self.list_widget.setCurrentRow(0)
-
 
         # Protocol selection widgets
         self.protocol_list_widget = NavigationListWidget(self)
@@ -174,8 +180,6 @@ class ParamsPage(QWidget):
 
         self.protocol_param_list = NavigationListWidget()
 
-
-
         # Gauge for MT page (0–100 % MSO)
         self.mt_gauge = IntensityGauge(self)
         self.mt_gauge.setMode(GaugeMode.MT_PERCENT)
@@ -186,13 +190,16 @@ class ParamsPage(QWidget):
         self.mt_gauge.setMinimumSize(self.intensity_gauge.minimumSize())
         self.mt_gauge.setSizePolicy(self.intensity_gauge.sizePolicy())
 
+        # Single timeout row widget for MT page (right column)
+        self.mt_timeout_widget = NavigationListWidget(self)
+        self._init_mt_timeout_row()
+
         # Top-left session info widget
         self.session_info = SessionInfoWidget(self)
 
         # Top panel
         self.top_panel = QWidget()
         self.top_panel.setFixedHeight(80)
-#
 
         self.coil_temp_widget = CoilTemperatureWidget(
             warning_threshold=COIL_WARNING_TEMPERATURE_THRESHOLD,
@@ -217,8 +224,6 @@ class ParamsPage(QWidget):
         top_layout.addWidget(self.session_info, alignment=Qt.AlignLeft | Qt.AlignVCenter)
         top_layout.addStretch(1)
         self.coil_temp_widget.setMaximumWidth(int(self.coil_temp_widget.height() * 1.4))
-
-
         top_layout.addWidget(self.coil_temp_widget, alignment=Qt.AlignRight | Qt.AlignVCenter)
 
         # --- Bottom row: session controls ---
@@ -226,7 +231,7 @@ class ParamsPage(QWidget):
         # no horizontal margins, no extra spacing: let SessionControlWidget own the layout
         bottom_layout.setContentsMargins(16, 0, 8, 0)
         bottom_layout.setSpacing(0)
-        bottom_layout.addWidget(self.session_controls)  # <-- no AlignHCenter, no stretches
+        bottom_layout.addWidget(self.session_controls)
 
         # --- NORMAL PAGE content: [Gauge] [PulseBars] [Param list] ---
         normal_page = QWidget()
@@ -245,7 +250,7 @@ class ParamsPage(QWidget):
         right_col.addWidget(self.list_widget, stretch=0)
         normal_content_layout.addLayout(right_col, stretch=1)
 
-        # --- MT / PROTOCOL pages unchanged ...
+        # MT / PROTOCOL pages
         mt_page = self._create_mt_page()
         protocol_page = self._create_protocols_page()
 
@@ -256,7 +261,6 @@ class ParamsPage(QWidget):
 
         # --- Assemble page layout ---
         main_layout = QVBoxLayout(self)
-        # important: remove outer margins so the bottom bar can span fully
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
@@ -264,16 +268,87 @@ class ParamsPage(QWidget):
         main_layout.addLayout(self.main_stack, stretch=1)
         main_layout.addWidget(self.bottom_panel)
 
+    # ------------------------------------------------------------------
+    #   MT timeout row helpers
+    # ------------------------------------------------------------------
+    def _init_mt_timeout_row(self) -> None:
+        """
+        Create a single row that behaves like other param rows:
+        title + numeric value + range suffix (0.0–5.0 s, step 0.5 s).
+        """
+        self.mt_timeout_widget.clear()
 
+        title = "Single Delay"
+        value = 0.1           # default: 0.5 s
+        lo, hi = 0.0, 2.0     # allowed range (s)
+        step = 0.1            # increment (s)
+        unit = "Seconds"
+
+        self.mt_timeout_widget.add_item(
+            title=title,
+            value=value,
+            bounds="",
+            data={
+                "timeout_s": value,
+                "lo": lo,
+                "hi": hi,
+                "step": step,
+                "unit": unit,
+            },
+        )
+
+        if self.mt_timeout_widget.count() > 0:
+            item = self.mt_timeout_widget.item(0)
+            row_widget = self.mt_timeout_widget.itemWidget(item)
+            if row_widget is not None:
+                row_widget.set_value(value)
+                suffix = f"{unit}   ({lo:.1f}–{hi:.1f})"
+                row_widget.set_suffix(suffix)
+
+            row_h = self.mt_timeout_widget.sizeHintForRow(0)
+            self.mt_timeout_widget.setFixedHeight(row_h + 6)
+            self.mt_timeout_widget.setCurrentRow(0)
+
+    def _get_selected_single_timeout_s(self) -> float:
+        """
+        Read timeout_s from the single-row timeout widget (in seconds).
+        """
+        if self.mt_timeout_widget.count() == 0:
+            return 0.0
+
+        item = self.mt_timeout_widget.item(0)
+        if not item:
+            return 0.0
+
+        meta = item.data(Qt.UserRole) or {}
+        if "timeout_s" in meta:
+            try:
+                return float(meta["timeout_s"])
+            except (TypeError, ValueError):
+                pass
+
+        row_widget = self.mt_timeout_widget.itemWidget(item)
+        if row_widget is None:
+            return 0.0
+
+        try:
+            return float(row_widget.get_value())
+        except Exception:
+            return 0.0
+
+    # ------------------------------------------------------------------
+    #   MT / PROTOCOL pages
+    # ------------------------------------------------------------------
     def _create_mt_page(self) -> QWidget:
         """
         MT page content:
 
-            [ mt_gauge | (spacer) | (image + text) ]
+            [ mt_gauge ] [ image + text ] [ timeout row ]
         """
         page = QWidget()
         layout = QHBoxLayout(page)
         layout.setContentsMargins(8, 5, 8, 5)
+        layout.setSpacing(16)
 
         # Left: MT gauge
         left_col = QVBoxLayout()
@@ -282,11 +357,8 @@ class ParamsPage(QWidget):
         left_col.addStretch(2)
         layout.addLayout(left_col, stretch=1)
 
-        # Middle: stretch (empty) – keeps gauge in same horizontal band
-        layout.addStretch(1)
-
-        # Right: picture + text
-        right_col = QVBoxLayout()
+        # Center: image + text
+        center_col = QVBoxLayout()
 
         picture = QLabel("Image placeholder", page)
         picture.setAlignment(Qt.AlignCenter)
@@ -302,13 +374,29 @@ class ParamsPage(QWidget):
             page,
         )
         text.setWordWrap(True)
+        text.setAlignment(Qt.AlignCenter)
 
-        right_col.addWidget(picture)
-        right_col.addSpacing(8)
-        right_col.addWidget(text)
+        center_col.addStretch(1)
+        center_col.addWidget(picture, alignment=Qt.AlignCenter)
+        center_col.addSpacing(8)
+        center_col.addWidget(text, alignment=Qt.AlignCenter)
+        center_col.addStretch(1)
+
+        layout.addLayout(center_col, stretch=1)
+
+        # Right: single timeout row (centered vertically)
+        right_col = QVBoxLayout()
+
+        timeout_label = QLabel("Single Pulse Delay", page)
+        timeout_label.setAlignment(Qt.AlignCenter)
+
         right_col.addStretch(1)
+        right_col.addWidget(timeout_label, alignment=Qt.AlignCenter)
+        right_col.addSpacing(4)
+        right_col.addWidget(self.mt_timeout_widget, alignment=Qt.AlignCenter)
+        right_col.addStretch(2)
 
-        layout.addLayout(right_col, stretch=0)
+        layout.addLayout(right_col, stretch=1)
 
         return page
 
@@ -349,6 +437,8 @@ class ParamsPage(QWidget):
                 bounds="",
                 data={"key": key, "unit": unit},
             )
+        if widget.count() > 0:
+            widget.setCurrentRow(0)
 
     # ------------------------------------------------------------------
     #   Backend binding
@@ -436,10 +526,6 @@ class ParamsPage(QWidget):
             self.backend.request_param_update(proto)
 
     # ------------------------------------------------------------------
-    #   Remaining gauge mode helpers (disabled)
-    # ------------------------------------------------------------------
-
-    # ------------------------------------------------------------------
     #   Param ranges / sync
     # ------------------------------------------------------------------
     def _get_param_range_for_key(
@@ -454,7 +540,6 @@ class ParamsPage(QWidget):
         if key == "train_count":
             return 1, 10000
         if key == "inter_train_interval_s":
-            # >>> CHANGED: use ITI_MIN / ITI_MAX <<<
             return proto.ITI_MIN, proto.ITI_MAX
         if key == "burst_pulses_count":
             return min(proto.BURST_PULSES_ALLOWED), max(proto.BURST_PULSES_ALLOWED)
@@ -508,7 +593,11 @@ class ParamsPage(QWidget):
             row_widget.set_value(display_val)
             suffix = unit
             if isinstance(display_val, (int, float)):
-                suffix = f"{unit}   ({lo:.2f}–{hi:.2f})" if unit else f"({lo:.2f}–{hi:.2f})"
+                suffix = (
+                    f"{unit}   ({lo:.2f}–{hi:.2f})"
+                    if unit
+                    else f"({lo:.2f}–{hi:.2f})"
+                )
             row_widget.set_suffix(suffix)
 
     def _sync_ui_from_protocol(self) -> None:
@@ -528,6 +617,7 @@ class ParamsPage(QWidget):
             pass
 
         self._sync_param_widget_from_protocol(proto, self.list_widget, True)
+
     # ------------------------------------------------------------------
     #   MT / intensity helpers
     # ------------------------------------------------------------------
@@ -612,7 +702,6 @@ class ParamsPage(QWidget):
     #   Value modification (encoder)
     # ------------------------------------------------------------------
     def _modify_value(self, delta: float) -> None:
-        
         if self.session_state == SessionState.PROTOCOL_EDIT:
             return
 
@@ -646,9 +735,7 @@ class ParamsPage(QWidget):
         if key == "frequency_hz":
             step = 0.1 if cur_val < 1.0 else 1.0
         elif key in ("inter_pulse_interval_ms", "inter_train_interval_s"):
-
             if key == "inter_train_interval_s":
-                # >>> NEW: ITI steps of 0.5 s <<<
                 step = 0.5
             else:
                 step = 1
@@ -674,7 +761,6 @@ class ParamsPage(QWidget):
         if key == "frequency_hz":
             new_val = round(new_val, 1) if new_val < 1.0 else round(new_val)
 
-
         if key == "inter_train_interval_s":
             new_val = round(new_val * 2.0) / 2.0
 
@@ -689,6 +775,42 @@ class ParamsPage(QWidget):
         if self.backend is not None and self.current_protocol is not None:
             self.backend.request_param_update(self.current_protocol)
 
+    def _modify_mt_timeout(self, delta: int) -> None:
+        """
+        Use encoder steps to modify the single-pulse timeout row in MT mode.
+        """
+        if delta == 0:
+            return
+        if self.mt_timeout_widget.count() == 0:
+            return
+
+        item = self.mt_timeout_widget.item(0)
+        row_widget = self.mt_timeout_widget.itemWidget(item)
+        if row_widget is None:
+            return
+
+        meta = item.data(Qt.UserRole) or {}
+        lo = float(meta.get("lo", 0.0))
+        hi = float(meta.get("hi", 5.0))
+        step = float(meta.get("step", 0.5))
+        unit = meta.get("unit", "s")
+
+        try:
+            cur_val = float(row_widget.get_value())
+        except Exception:
+            cur_val = float(meta.get("timeout_s", 0.0))
+
+        new_val = cur_val + delta * step
+        new_val = max(lo, min(hi, new_val))
+        new_val = round(new_val * 2.0) / 2.0  # snap to 0.5s grid
+
+        row_widget.set_value(new_val)
+        suffix = f"{unit}   ({lo:.1f}–{hi:.1f})"
+        row_widget.set_suffix(suffix)
+
+        meta["timeout_s"] = new_val
+        item.setData(Qt.UserRole, meta)
+
     # ------------------------------------------------------------------
     #   GPIO backend integration
     # ------------------------------------------------------------------
@@ -698,7 +820,6 @@ class ParamsPage(QWidget):
 
         gb = self.gpio_backend
 
-        # Wrap GPIO slots with guard to allow blocking after MT Apply
         gb.encoderStep.connect(self._gpio_guard.wrap(self._on_encoder_step_hw))
         gb.arrowUpPressed.connect(self._gpio_guard.wrap(self._on_nav_up))
         gb.arrowDownPressed.connect(self._gpio_guard.wrap(self._on_nav_down))
@@ -714,6 +835,11 @@ class ParamsPage(QWidget):
 
     # ---------- Original handlers (GUI + GPIO) ------------------------
     def _on_encoder_step_hw(self, step: int) -> None:
+        # In MT edit mode, use encoder to adjust the single timeout row
+        if self.session_state == SessionState.MT_EDIT:
+            self._modify_mt_timeout(step)
+            return
+
         self._modify_value(float(step))
 
     def _on_nav_up(self) -> None:
@@ -721,7 +847,6 @@ class ParamsPage(QWidget):
             return
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self.protocol_list_widget.select_previous()
-
 
         self.list_widget.select_previous()
 
@@ -735,9 +860,17 @@ class ParamsPage(QWidget):
 
     def _single_pulse_requested(self) -> None:
         if self.session_state == SessionState.MT_EDIT and self.backend is not None:
+            now = time.time()
+            timeout_s = self._get_selected_single_timeout_s()
+
+            # Enforce minimum spacing between pulses
+            if timeout_s > 0.0 and (now - self._last_single_pulse_time) < timeout_s:
+                return
+
             try:
                 current_mt = int(self.mt_gauge.value())
                 self.backend.single_pulse_request(current_mt)
+                self._last_single_pulse_time = now
             except Exception:
                 pass
 
@@ -751,97 +884,80 @@ class ParamsPage(QWidget):
         self.session_paused = (new_state == SessionState.PAUSED)
 
     def _start_session(self, is_resume: bool = False) -> None:
-            """
-            Transitions the UI to RUNNING state. 
-            Triggers the pulse widget to either start fresh or resume.
-            """
-            if not self.enabled or not self.coil_connected:
-                return
-            # Prevent starting if we are currently editing parameters
-            if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
-                return
+        """
+        Transitions the UI to RUNNING state. 
+        Triggers the pulse widget to either start fresh or resume.
+        """
+        if not self.enabled or not self.coil_connected:
+            return
+        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+            return
 
-            self._set_session_state(SessionState.RUNNING)
+        self._set_session_state(SessionState.RUNNING)
 
-            # --- PULSE WIDGET CONTROL ---
-            self.pulse_widget.start()
-            # Update UI Controls (Change button text to 'Pause', etc.)
-            self.session_controls.set_state(running=True, paused=False)
+        self.pulse_widget.start()
+        self.session_controls.set_state(running=True, paused=False)
 
-            self._stimulation_start_time = time.time()
+        self._stimulation_start_time = time.time()
 
-            if self.backend:
-                self.backend.start_session()
+        if self.backend:
+            self.backend.start_session()
 
     def _pause_session(self) -> None:
-            """
-            Transitions UI to PAUSED state and freezes the pulse widget.
-            """
-            if self.session_state != SessionState.RUNNING:
-                return
+        """
+        Transitions UI to PAUSED state and freezes the pulse widget.
+        """
+        if self.session_state != SessionState.RUNNING:
+            return
 
-            self._set_session_state(SessionState.PAUSED)
+        self._set_session_state(SessionState.PAUSED)
 
-            # --- PULSE WIDGET CONTROL ---
-            self.pulse_widget.pause()
+        self.pulse_widget.pause()
+        self.session_controls.set_state(running=False, paused=True)
 
-            # Update UI Controls (Change button text to 'Resume', etc.)
-            self.session_controls.set_state(running=False, paused=True)
-
-            if self.backend:
-                self.backend.pause_session()
+        if self.backend:
+            self.backend.pause_session()
 
     def _stop_session(self) -> None:
-            """
-            Transitions UI to IDLE state and resets the pulse widget.
-            """
-            if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
-                return
+        """
+        Transitions UI to IDLE state and resets the pulse widget.
+        """
+        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+            return
 
-            self._set_session_state(SessionState.IDLE)
+        self._set_session_state(SessionState.IDLE)
 
-            # --- PULSE WIDGET CONTROL ---
-            self.pulse_widget.stop()
+        self.pulse_widget.stop()
+        self.session_controls.set_state(running=False, paused=False)
 
-            # Reset UI Controls (Change button text to 'Start')
-            self.session_controls.set_state(running=False, paused=False)
+        self._stimulation_start_time = 0.0
 
-            self._stimulation_start_time = 0.0
-
-            if self.backend:
-                self.backend.stop_session()
+        if self.backend:
+            self.backend.stop_session()
 
     # ------------------------------------------------------------------
     #   Session control handlers
     # ------------------------------------------------------------------
     def _on_session_start_requested(self) -> None:
-            # MT/Protocol Edit Mode Logic (No change)
-            if self.session_state == SessionState.MT_EDIT:
-                self._on_mt_apply()
-                self._set_backend_state("idle", force=True)
-                return
+        if self.session_state == SessionState.MT_EDIT:
+            self._on_mt_apply()
+            self._set_backend_state("idle", force=True)
+            return
 
-            if self.session_state == SessionState.PROTOCOL_EDIT:
-                self._on_protocol_apply()
-                self._set_backend_state("idle", force=True)
-                return
+        if self.session_state == SessionState.PROTOCOL_EDIT:
+            self._on_protocol_apply()
+            self._set_backend_state("idle", force=True)
+            return
 
-            # Safety Checks
-            if not self.enabled or not self.coil_connected:
-                return
+        if not self.enabled or not self.coil_connected:
+            return
 
-            # --- MAIN STATE MACHINE LOGIC ---
-            if self.session_state == SessionState.IDLE:
-                # Fresh Start
-                self._start_session(is_resume=False)
-                
-            elif self.session_state == SessionState.PAUSED:
-                # Resume from Pause
-                self._start_session(is_resume=True)
-                
-            elif self.session_state == SessionState.RUNNING:
-                # Pause the session
-                self._pause_session()
+        if self.session_state == SessionState.IDLE:
+            self._start_session(is_resume=False)
+        elif self.session_state == SessionState.PAUSED:
+            self._start_session(is_resume=True)
+        elif self.session_state == SessionState.RUNNING:
+            self._pause_session()
 
     def _on_session_stop_requested(self) -> None:
         if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
@@ -849,7 +965,6 @@ class ParamsPage(QWidget):
         self._stop_session()
 
     def _on_protocols_list_requested(self) -> None:
-        # In MT mode: Protocol acts as Cancel
         if self.session_state == SessionState.MT_EDIT:
             self._on_mt_cancel()
             return
@@ -866,7 +981,6 @@ class ParamsPage(QWidget):
     # ------------------------------------------------------------------
     #   MT mode: enter/exit/apply/cancel
     # ------------------------------------------------------------------
-
     def _backup_session_controls(self) -> None:
         sc = self.session_controls
         self._session_btn_labels_backup = {
@@ -904,8 +1018,6 @@ class ParamsPage(QWidget):
         sc.mt_frame.show()
         sc.theme_frame.show()
         sc.stop_frame.show()
-
-
 
     def _enter_mt_mode(self) -> None:
         if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
@@ -946,11 +1058,11 @@ class ParamsPage(QWidget):
                     self.backend.request_param_update(self.current_protocol)
                 except Exception:
                     pass
-        
+
+        else:
+            mt_val = 0
 
         self.mt_gauge.setValue(mt_val)
-
-
 
         self._backup_session_controls()
         self._apply_edit_controls("Apply")
@@ -1003,7 +1115,13 @@ class ParamsPage(QWidget):
 
         if self.current_protocol is not None:
             stored = False
-            for attr in ("subject_mt_percent", "subject_mt", "mt_percent", "mt_value", "subject_mt_percent_init"):
+            for attr in (
+                "subject_mt_percent",
+                "subject_mt",
+                "mt_percent",
+                "mt_value",
+                "subject_mt_percent_init",
+            ):
                 if hasattr(self.current_protocol, attr):
                     try:
                         setattr(self.current_protocol, attr, value)
@@ -1019,14 +1137,10 @@ class ParamsPage(QWidget):
                     pass
 
         self._update_intensity_gauge_range()
-
         self.session_info.setMtValue(value)
 
         self._exit_mt_mode()
-
-        # Debounce GPIO events after MT apply
         self._gpio_guard.block()
-
 
     # ------------------------------------------------------------------
     #   Protocol selection helpers
@@ -1108,12 +1222,10 @@ class ParamsPage(QWidget):
 
         proto = self.protocol_manager.get_protocol(self._selected_protocol_name)
         if proto:
-            #Because the default values on protocol list for MT are absolute we have to do this so we keep the MT value.
             proto.subject_mt_percent = self.current_protocol.subject_mt_percent
             self.set_protocol(proto)
 
         self._exit_protocol_mode()
-
 
     # ------------------------------------------------------------------
     #   Coil connection state (from uC)
@@ -1132,9 +1244,10 @@ class ParamsPage(QWidget):
             self.enabled = False
 
         self._apply_enable_state()
-        
 
-        if (not self.coil_connected) and (self.session_state in (SessionState.RUNNING, SessionState.PAUSED)):
+        if (not self.coil_connected) and (
+            self.session_state in (SessionState.RUNNING, SessionState.PAUSED)
+        ):
             self._stop_session()
 
     # ------------------------------------------------------------------
@@ -1245,9 +1358,12 @@ class ParamsPage(QWidget):
         self.intensity_gauge.setDisabled(True)
 
     def _apply_enable_state(self) -> None:
-        normal_temp = self.coil_normal_Temperature and self.igbt_normal_Temperature and self.resistor_normal_Temperature
+        normal_temp = (
+            self.coil_normal_Temperature
+            and self.igbt_normal_Temperature
+            and self.resistor_normal_Temperature
+        )
 
-        # Disable Completely
         if not normal_temp:
             self.enabled = False
 
@@ -1262,17 +1378,15 @@ class ParamsPage(QWidget):
         self._update_leds_for_enable(self.system_enabled)
         self._force_mt_at_disable(self.system_enabled)
 
-        
-
         sc = getattr(self, "session_controls", None)
         if sc is not None:
             mt_enabled = self.system_enabled and (
-                self.session_state not in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT)
+                self.session_state
+                not in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT)
             )
             sc.mt_frame.setEnabled(mt_enabled)
 
-
-    def _force_mt_at_disable(self, en : bool):
+    def _force_mt_at_disable(self, en: bool):
         if not en and self.current_protocol:
             self.current_protocol.subject_mt_percent = 0
             self.set_protocol(self.current_protocol)
@@ -1281,7 +1395,9 @@ class ParamsPage(QWidget):
         self.enabled = not self.enabled
         self._apply_enable_state()
 
-        if (not self.enabled) and (self.session_state in (SessionState.RUNNING, SessionState.PAUSED)):
+        if (not self.enabled) and (
+            self.session_state in (SessionState.RUNNING, SessionState.PAUSED)
+        ):
             self._stop_session()
 
     # ------------------------------------------------------------------
@@ -1306,19 +1422,32 @@ class ParamsPage(QWidget):
         except Exception as e:
             print("Couldn't apply theme to gauge/coil widget:", e)
 
+        self._toggle_icons_on_theme(self.current_theme)
+
         self._update_bottom_panel_style()
 
     def _toggle_theme(self) -> None:
-        
         if self.current_theme == "dark":
+            self.current_theme = "light"
             
-            self.current_theme = "light" 
         else:
             self.current_theme = "dark"
+
 
         self._apply_theme_to_app(self.current_theme)
         if self.current_protocol:
             self._sync_ui_from_protocol()
+
+    def _toggle_icons_on_theme(self, theme: str) -> None:
+        # Build an absolute path based on this file location
+        icon_path = Path(f"src/assets/icons/User_{theme}.png")
+
+        print("Loading user icon from:", icon_path.absolute())
+
+        user_icon = QPixmap(str(icon_path))
+        print("  exists:", icon_path.exists(), "isNull:", user_icon.isNull())
+
+        self.session_info.setUserIcon(user_icon)
 
     # ------------------------------------------------------------------
     #   Temperature + intensity from uC
@@ -1327,14 +1456,10 @@ class ParamsPage(QWidget):
         if hasattr(self, "coil_temp_widget"):
             self.coil_temp_widget.setTemperature(temperature)
 
-        
-        # Normal
         if temperature < COIL_WARNING_TEMPERATURE_THRESHOLD:
             self.coil_normal_Temperature = True
-
         elif temperature < COIL_DANGER_TEMPERATURE_THRESHOLD:
             self.coil_normal_Temperature = True
-
         else:
             if self.coil_normal_Temperature:
                 self._set_backend_state("error")
@@ -1378,21 +1503,19 @@ class ParamsPage(QWidget):
 
     def _manage_state_from_uc(self, val: int):
         self._uC_State = val
-        if val == 1: # Idle
+        if val == 1:  # Idle
             if self.session_state == SessionState.RUNNING or self.session_state == SessionState.PAUSED:
-                    elapsed_time = time.time() - self._stimulation_start_time
-                    if elapsed_time > 0.5:
-                        self._set_session_state(SessionState.IDLE)
-                        self._stimulation_start_time = 0.0
-                        if hasattr(self.pulse_widget, "stop"):
-                            self.pulse_widget.stop()
+                elapsed_time = time.time() - self._stimulation_start_time
+                if elapsed_time > 0.5:
+                    self._set_session_state(SessionState.IDLE)
+                    self._stimulation_start_time = 0.0
+                    if hasattr(self.pulse_widget, "stop"):
+                        self.pulse_widget.stop()
 
-                        self.session_controls.set_state(running=False, paused=False)
-
-
+                    self.session_controls.set_state(running=False, paused=False)
 
     def _apply_intensity_from_uc(self, val: int) -> None:
-        if self.session_state == SessionState.MT_EDIT and self._uC_State == 7: # MT State
+        if self.session_state == SessionState.MT_EDIT and self._uC_State == 7:  # MT State
             v = int(val)
             v = max(0, min(100, v))
 
@@ -1415,10 +1538,9 @@ class ParamsPage(QWidget):
                     pass
 
             return
-        
+
         if self.session_state == SessionState.PROTOCOL_EDIT:
             return
-
 
         v_f = float(val)
         v_clamped = self._clamp_intensity_by_mt(v_f)
@@ -1432,7 +1554,7 @@ class ParamsPage(QWidget):
                 proto.intensity_percent_of_mt = 0.0
                 proto.intensity_percent_of_mt_init = 0.0
 
-        if self.intensity_gauge.mode() != GaugeMode.INTENSITY or self._uC_State == 7: # Not MT
+        if self.intensity_gauge.mode() != GaugeMode.INTENSITY or self._uC_State == 7:
             return
 
         if not self.enabled:
@@ -1461,29 +1583,22 @@ class ParamsPage(QWidget):
             pass
 
     # ------------------ Temperatures Handlers ------------------- #
-    def _on_resistor_Temperature(self, temperature : float):
-        # Normal
+    def _on_resistor_Temperature(self, temperature: float):
         if temperature < RESISTOR_WARNING_TEMPERATURE_THRESHOLD:
             self.resistor_normal_Temperature = True
-
         elif temperature < RESISTOR_DANGER_TEMPERATURE_THRESHOLD:
             self.resistor_normal_Temperature = True
-            
         else:
             if self.resistor_normal_Temperature:
                 self._set_backend_state("error")
                 self.resistor_normal_Temperature = False
                 self._apply_enable_state()
 
-
-    def _on_igbt_Temperature(self, temperature : float):
-        # Normal
+    def _on_igbt_Temperature(self, temperature: float):
         if temperature < IGBT_WARNING_TEMPERATURE_THRESHOLD:
             self.igbt_normal_Temperature = True
-
         elif temperature < IGBT_DANGER_TEMPERATURE_THRESHOLD:
             self.igbt_normal_Temperature = True
-            
         else:
             if self.igbt_normal_Temperature:
                 self._set_backend_state("error")
