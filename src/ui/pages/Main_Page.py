@@ -1108,6 +1108,8 @@ class ParamsPage(QWidget):
 
         proto = self.protocol_manager.get_protocol(self._selected_protocol_name)
         if proto:
+            #Because the default values on protocol list for MT are absolute we have to do this so we keep the MT value.
+            proto.subject_mt_percent = self.current_protocol.subject_mt_percent
             self.set_protocol(proto)
 
         self._exit_protocol_mode()
@@ -1307,7 +1309,13 @@ class ParamsPage(QWidget):
         self._update_bottom_panel_style()
 
     def _toggle_theme(self) -> None:
-        self.current_theme = "light" if self.current_theme == "dark" else "dark"
+        
+        if self.current_theme == "dark":
+            
+            self.current_theme = "light" 
+        else:
+            self.current_theme = "dark"
+
         self._apply_theme_to_app(self.current_theme)
         if self.current_protocol:
             self._sync_ui_from_protocol()
