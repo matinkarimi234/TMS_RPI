@@ -1,7 +1,7 @@
 # main_window.py (or wherever your MainWindow class lives)
 
 from pathlib import Path
-
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMainWindow
 
 from app.theme_manager import ThemeManager
@@ -25,6 +25,11 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("TMS Control Interface")
         self.resize(320, 480)
+
+        self.setWindowFlags(
+            Qt.FramelessWindowHint |
+            Qt.WindowStaysOnTopHint  # keep above taskbar/panel
+        )
 
         # ---------------- UART stack (single instance) ----------------
         self.uart_backend = Uart_Backend(
