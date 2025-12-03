@@ -808,9 +808,9 @@ class ParamsPage(QWidget):
 
         meta = item.data(Qt.UserRole) or {}
         lo = float(meta.get("lo", 0.0))
-        hi = float(meta.get("hi", 5.0))
-        step = float(meta.get("step", 0.5))
-        unit = meta.get("unit", "s")
+        hi = float(meta.get("hi", 2.0))
+        step = float(meta.get("step", 0.1))
+        unit = meta.get("unit", "Seconds")
 
         try:
             cur_val = float(row_widget.get_value())
