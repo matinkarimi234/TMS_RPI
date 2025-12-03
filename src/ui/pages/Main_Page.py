@@ -299,7 +299,7 @@ class ParamsPage(QWidget):
         self.mt_timeout_widget.clear()
 
         title = "Single Delay"
-        value = 0.1          # default: 0.1 s
+        value = 0.0          # default: 0.1 s
         lo, hi = 0.0, 2.0    # allowed range (s)
         step = 0.1           # increment (s)
         unit = "Seconds"
@@ -346,6 +346,9 @@ class ParamsPage(QWidget):
                 return float(meta["timeout_s"])
             except (TypeError, ValueError):
                 pass
+
+        if self.mt_timeout_widget.count() > 0:
+            item = self.mt_timeout_widget.item(0)
 
         row_widget = self.mt_timeout_widget.itemWidget(item)
         if row_widget is None:
@@ -819,7 +822,7 @@ class ParamsPage(QWidget):
 
         new_val = cur_val + delta * step
         new_val = max(lo, min(hi, new_val))
-        new_val = round(new_val * 2.0) / 2.0  # snap to 0.5s grid
+        new_val = round(new_val * 10.0) / 10.0  # snap to 0.5s grid
 
         row_widget.set_value(new_val)
         suffix = f"{unit}   ({lo:.1f}–{hi:.1f})"
@@ -1460,7 +1463,7 @@ class ParamsPage(QWidget):
 
     def _toggle_icons_on_theme(self, theme: str) -> None:
         # Build an absolute path (adjust this to your real project layout if needed)
-        icon_path = Path(f"src/assets/icons/User_{theme}.png")
+        icon_path = Path(f"assets/icons/User_{theme}.png")
 
         print("Loading user icon from:", icon_path.absolute())
 
