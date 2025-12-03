@@ -784,6 +784,9 @@ class ParamsPage(QWidget):
         if key == "inter_train_interval_s":
             new_val = round(new_val * 2.0) / 2.0
 
+        if key == "ramp_fraction":
+            new_val = round(new_val * 10.0) / 10.0
+
         new_val = max(lo, min(hi, new_val))
         setattr(proto, key, new_val)
 
