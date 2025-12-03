@@ -30,16 +30,17 @@ class CountdownCircle(QWidget):
         return QSize(120, 120)
 
     def set_fraction_and_label(self, frac: float, seconds_left: float):
-        # clamp
+        # clamp fraction
         if frac < 0.0:
             frac = 0.0
         if frac > 1.0:
             frac = 1.0
         self._fraction = frac
 
-        # ceil-ish for display
-        sec_left_i = max(0, int(seconds_left + 0.999))
-        self._seconds_left_text = f"{sec_left_i}s"
+        # quantize time to 0.5 s steps: 0.0, 0.5, 1.0, 1.5, ...
+        step = 0.5
+        quant = max(0.0, round(seconds_left / step) * step)
+        self._seconds_left_text = f"{quant:.1f}s"
 
         self.update()
 
