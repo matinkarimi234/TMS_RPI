@@ -20,6 +20,7 @@ from ui.widgets.pulse_bars_widget import PulseBarsWidget
 from ui.widgets.intensity_gauge import IntensityGauge, GaugeMode
 from ui.widgets.temperature_widget import CoilTemperatureWidget
 from ui.widgets.session_control_widget import SessionControlWidget
+from ui.widgets.session_log_widget import SessionLogWidget
 from services.uart_backend import Uart_Backend
 from services.gpio_backend import GPIO_Backend
 from ui.widgets.session_info_widget import SessionInfoWidget
@@ -93,7 +94,7 @@ class ParamsPage(QWidget):
 
         # Explicit session state machine
         self.session_state: SessionState = SessionState.IDLE
-
+        
         # Backwards-compatible flags (kept for other code that might read them)
         self.session_active: bool = False   # True only when running
         self.session_paused: bool = False   # True only when paused
@@ -179,6 +180,11 @@ class ParamsPage(QWidget):
             pass
 
         self.pulse_widget = PulseBarsWidget(self)
+        self.pulse_widget.sessionRemainingChanged.connect(
+            self._on_session_remaining_changed
+        )
+
+
         self.list_widget = NavigationListWidget()
         self.list_widget.setCurrentRow(0)
 
@@ -223,6 +229,8 @@ class ParamsPage(QWidget):
 
         # Top-left session info widget
         self.session_info = SessionInfoWidget(self)
+        # Top-center log for pulses / duration / errors
+        self.session_log_widget = SessionLogWidget(self)
 
         # Top panel
         self.top_panel = QWidget()
@@ -266,6 +274,11 @@ class ParamsPage(QWidget):
         top_layout.setSpacing(8)
 
         top_layout.addWidget(self.session_info, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+        top_layout.addStretch(1)
+
+        # log widget in the middle
+        top_layout.addWidget(self.session_log_widget, alignment=Qt.AlignCenter)
+
         top_layout.addStretch(1)
         self.coil_temp_widget.setMaximumWidth(int(self.coil_temp_widget.height() * 1.4))
         top_layout.addWidget(self.coil_temp_widget, alignment=Qt.AlignRight | Qt.AlignVCenter)
@@ -622,6 +635,7 @@ class ParamsPage(QWidget):
         self._update_intensity_gauge_range()
 
         self._sync_ui_from_protocol()
+        self._update_log_widget_for_current_state()
         self._sync_param_widget_from_protocol(proto, self.protocol_param_list, False)
 
         if self.backend is not None:
@@ -650,6 +664,73 @@ class ParamsPage(QWidget):
         if key == "ramp_steps":
             return 1, 10
         return 0, 1
+    
+    def _compute_protocol_session_stats(self, proto: TMSProtocol) -> tuple[int, float]:
+        """
+        MCU-equivalent session stats for a protocol:
+          - total pulses
+          - total duration (seconds)
+        """
+        try:
+            E = int(getattr(proto, "pulses_per_train", 1))       # events per train
+            B = int(getattr(proto, "burst_pulses_count", 1))     # pulses per event
+            N = int(getattr(proto, "train_count", 1))            # trains per session
+            freq = float(getattr(proto, "frequency_hz", 1.0))
+            ipi_ms = float(getattr(proto, "inter_pulse_interval_ms", 0.0))
+            iti_s = float(getattr(proto, "inter_train_interval_s", 0.0))
+        except Exception:
+            return 0, 0.0
+
+        E = max(1, E)
+        B = max(1, B)
+        N = max(1, N)
+
+        freq = max(0.1, freq)
+        T_rep = 1.0 / freq
+        T_ipi = max(0.0, ipi_ms / 1000.0)
+
+        # Train duration (matches MCU logic used in PulseBarsWidget)
+        train_dur = E * (T_rep + (B - 1) * T_ipi)
+        total_dur = N * train_dur + max(0, N - 1) * iti_s
+
+        total_pulses = N * E * B
+        return total_pulses, total_dur
+    
+    def _update_log_widget_for_current_state(self) -> None:
+        if not hasattr(self, "session_log_widget"):
+            return
+
+        # RUNNING/PAUSED: live is driven by sessionRemainingChanged
+        if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
+            return
+
+        # MT / Settings: blank for now
+        if self.session_state in (SessionState.MT_EDIT, SessionState.SETTINGS_EDIT):
+            self.session_log_widget.show_blank()
+            return
+
+        # IDLE on main page: preview current protocol via pulse widget
+        if self.session_state == SessionState.IDLE:
+            if self.current_protocol is not None:
+                pulses = self.pulse_widget.totalPulses
+                dur = self.pulse_widget.totalSeconds
+                self.session_log_widget.show_preview(pulses, dur, source="Current")
+            else:
+                self.session_log_widget.show_blank()
+            return
+
+        # PROTOCOL_EDIT: we still need to compute for the *selected* proto,
+        # because the pulse widget is configured with the current proto, not the
+        # one you’re hovering over in the list.
+        if self.session_state == SessionState.PROTOCOL_EDIT:
+            if self.protocol_manager and self._selected_protocol_name:
+                proto = self.protocol_manager.get_protocol(self._selected_protocol_name)
+                if proto:
+                    pulses, dur = self._compute_protocol_session_stats(proto)
+                    self.session_log_widget.show_preview(pulses, dur, source="Protocol")
+                    return
+            self.session_log_widget.show_blank()
+            return
 
     def _get_current_param_meta(self) -> Tuple[Optional[str], Dict[str, Any]]:
         item = self.list_widget.currentItem()
@@ -1054,6 +1135,10 @@ class ParamsPage(QWidget):
         self.session_active = (new_state == SessionState.RUNNING)
         self.session_paused = (new_state == SessionState.PAUSED)
 
+        # Update log widget for non-running modes
+        if new_state not in (SessionState.RUNNING, SessionState.PAUSED):
+            self._update_log_widget_for_current_state()
+
     def _start_session(self, is_resume: bool = False) -> None:
         """
         Transitions the UI to RUNNING state.
@@ -1164,6 +1249,20 @@ class ParamsPage(QWidget):
             return
 
         self._enter_protocol_mode()
+
+    def _on_session_remaining_changed(
+        self,
+        rem_pulses: int,
+        total_pulses: int,
+        rem_s: float,
+        total_s: float,
+    ) -> None:
+        """
+        Called every tick by PulseBarsWidget.
+        In RUNNING/PAUSED we show live remaining info in the log widget.
+        """
+        if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
+            self.session_log_widget.show_live(rem_pulses, total_pulses, rem_s, total_s)
 
     # ------------------------------------------------------------------
     #   MT mode: enter/exit/apply/cancel
@@ -1367,6 +1466,8 @@ class ParamsPage(QWidget):
         proto = self.protocol_manager.get_protocol(name)
         if proto:
             self._sync_param_widget_from_protocol(proto, self.protocol_param_list, False)
+            # Update log widget in protocol edit mode
+            self._update_log_widget_for_current_state()
 
     def _on_mt_requested(self) -> None:
         if not (self.enabled and self.coil_connected):
@@ -1511,6 +1612,7 @@ class ParamsPage(QWidget):
         if not self.coil_connected:
             self._set_backend_state("error")
             self.enabled = False
+            self.session_log_widget.show_error("Coil disconnected")
 
         self._apply_enable_state()
 
@@ -1672,6 +1774,10 @@ class ParamsPage(QWidget):
             )
             sc.mt_frame.setEnabled(mt_enabled)
 
+        # If system back to normal, refresh log for current state
+        if self.system_enabled:
+            self._update_log_widget_for_current_state()
+
     def _force_mt_at_disable(self, en: bool):
         if not en and self.current_protocol:
             self.current_protocol.subject_mt_percent = 0
@@ -1746,6 +1852,7 @@ class ParamsPage(QWidget):
                 self._set_backend_state("error")
                 self.coil_normal_Temperature = False
                 self._apply_enable_state()
+                self.session_log_widget.show_error("Coil temperature too high")
 
     def _on_intensity_changed(self, v: int) -> None:
         if self.session_state in (
@@ -1881,6 +1988,8 @@ class ParamsPage(QWidget):
                 self._set_backend_state("error")
                 self.resistor_normal_Temperature = False
                 self._apply_enable_state()
+                self.session_log_widget.show_error("Resistor temperature too high")
+
 
     def _on_igbt_Temperature(self, temperature: float):
         if temperature < IGBT_WARNING_TEMPERATURE_THRESHOLD:
@@ -1892,3 +2001,4 @@ class ParamsPage(QWidget):
                 self._set_backend_state("error")
                 self.igbt_normal_Temperature = False
                 self._apply_enable_state()
+                self.session_log_widget.show_error("IGBT temperature too high")
