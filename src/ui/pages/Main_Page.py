@@ -625,7 +625,7 @@ class ParamsPage(QWidget):
         self._sync_param_widget_from_protocol(proto, self.protocol_param_list, False)
 
         if self.backend is not None:
-            self.backend.request_param_update(proto)
+            self.backend.request_param_update(proto, self.buzzer_enabled)
 
     # ------------------------------------------------------------------
     #   Param ranges / sync
@@ -878,7 +878,7 @@ class ParamsPage(QWidget):
         self._sync_ui_from_protocol()
 
         if self.backend is not None and self.current_protocol is not None:
-            self.backend.request_param_update(self.current_protocol)
+            self.backend.request_param_update(self.current_protocol, self.buzzer_enabled)
 
     def _modify_mt_timeout(self, delta: int) -> None:
         """
@@ -1246,7 +1246,7 @@ class ParamsPage(QWidget):
             if self.backend is not None:
                 try:
                     self.backend.mt_state(mt_val)
-                    self.backend.request_param_update(self.current_protocol)
+                    self.backend.request_param_update(self.current_protocol, self.buzzer_enabled)
                 except Exception:
                     pass
 
@@ -1281,7 +1281,7 @@ class ParamsPage(QWidget):
                     pass
                 if self.backend is not None:
                     try:
-                        self.backend.request_param_update(self.current_protocol)
+                        self.backend.request_param_update(self.current_protocol, self.buzzer_enabled)
                     except Exception:
                         pass
             except Exception:
@@ -1323,7 +1323,7 @@ class ParamsPage(QWidget):
 
             if stored and self.backend is not None:
                 try:
-                    self.backend.request_param_update(self.current_protocol)
+                    self.backend.request_param_update(self.current_protocol, self.buzzer_enabled)
                 except Exception:
                     pass
 
@@ -1781,7 +1781,7 @@ class ParamsPage(QWidget):
             self._sync_ui_from_protocol()
 
             if self.backend is not None:
-                self.backend.request_param_update(proto)
+                self.backend.request_param_update(proto, self.buzzer_enabled)
 
     def _manage_state_from_uc(self, val: int):
         self._uC_State = val
