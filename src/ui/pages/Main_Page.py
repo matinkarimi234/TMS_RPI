@@ -1193,6 +1193,11 @@ class ParamsPage(QWidget):
         self._set_session_state(SessionState.IDLE)
 
         self.pulse_widget.stop()
+        
+        if hasattr(self.session_log_widget, "reset_live_state"):
+            self.session_log_widget.reset_live_state()
+            self.session_log_widget.show_blank()
+
         self.session_controls.set_state(running=False, paused=False)
 
         self._stimulation_start_time = 0.0
