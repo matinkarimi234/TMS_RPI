@@ -1,5 +1,21 @@
 [
   {
+    "name": "Default Protocol",
+    "subject_mt_percent_init": 0.0,
+    "intensity_percent_of_mt_init": 120.0,
+    "frequency_hz_init": 1.0,
+    "pulses_per_train": 1,
+    "train_count": 1,
+    "inter_train_interval_s": 0.5,
+    "target_region": "LDLPFC",
+    "description": "Default Protocol",
+    "ramp_fraction": 1.0,
+    "ramp_steps": 1,
+    "waveform": "Biphasic",
+    "burst_pulses_count_init": 1,
+    "inter_pulse_interval_ms_init": 10.0
+  },
+  {
     "name": "Standard Protocol (Depression)",
     "subject_mt_percent_init": 0.0,
     "intensity_percent_of_mt_init": 120.0,
