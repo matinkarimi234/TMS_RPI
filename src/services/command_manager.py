@@ -211,7 +211,7 @@ class CommandManager(QObject):
         self.packet_ready.emit(frame)
         return frame
     
-    def _encode_freq(freq_hz: float) -> int:
+    def _encode_freq(self, freq_hz: float) -> int:
         # 0 → special case (no freq)
         if freq_hz == 0:
             return 0
