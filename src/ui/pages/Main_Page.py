@@ -49,11 +49,20 @@ class ParamsPage(QWidget):
       - Left: INTENSITY gauge
       - Center: PulseBarsWidget
       - Right: parameter list
-      - Bottom: SessionControlWidget (Protocol, MT, Theme, Stop, Start/Pause)
+      - Bottom: SessionControlWidget (Protocol, MT, Settings, Stop, Start/Pause)
 
     MT mode:
       - Center stack switched to MT page:
           [ MT gauge | image placeholder | text + single timeout ]
+      - Bottom SessionControlWidget visually becomes:
+          [Cancel ................. Apply]
+
+    Protocol mode:
+      - Center stack switched to Protocol page
+
+    Settings mode:
+      - Center stack switched to Settings page:
+          [ About / info | settings NavigationListWidget ]
       - Bottom SessionControlWidget visually becomes:
           [Cancel ................. Apply]
     """
@@ -134,6 +143,11 @@ class ParamsPage(QWidget):
         # --- Protocol mode state ---
         self._selected_protocol_name: Optional[str] = None
 
+        # --- Settings mode state ---
+        self.buzzer_enabled: bool = True
+        self._pending_theme: str = self.current_theme
+        self._pending_buzzer: bool = self.buzzer_enabled
+
         # --- GPIO event guard (debounce after MT apply) ---
         self._gpio_guard = GpioEventGuard(block_ms=250, parent=self)
 
@@ -141,6 +155,7 @@ class ParamsPage(QWidget):
         self._init_widgets()
         self._build_layout()
         self._populate_param_list()
+        self._init_settings_list()
 
         # Initial MT shown in header = 0
         self.session_info.setMtValue(0)
@@ -197,6 +212,14 @@ class ParamsPage(QWidget):
         # Single timeout row widget for MT page (right column)
         self.mt_timeout_widget = NavigationListWidget(self)
         self._init_mt_timeout_row()
+
+        # Settings widgets
+        self.settings_list_widget = NavigationListWidget(self)
+        self.settings_about_label = QLabel(
+            "About / version info\n(placeholder – fill later)", self
+        )
+        self.settings_about_label.setWordWrap(True)
+        self.settings_about_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
 
         # Top-left session info widget
         self.session_info = SessionInfoWidget(self)
@@ -270,14 +293,16 @@ class ParamsPage(QWidget):
         right_col.addWidget(self.list_widget, stretch=0)
         normal_content_layout.addLayout(right_col, stretch=1)
 
-        # MT / PROTOCOL pages
+        # MT / PROTOCOL / SETTINGS pages
         mt_page = self._create_mt_page()
         protocol_page = self._create_protocols_page()
+        settings_page = self._create_settings_page()
 
         self.main_stack = QStackedLayout()
-        self.main_stack.addWidget(normal_page)
-        self.main_stack.addWidget(mt_page)
-        self.main_stack.addWidget(protocol_page)
+        self.main_stack.addWidget(normal_page)    # index 0
+        self.main_stack.addWidget(mt_page)        # index 1
+        self.main_stack.addWidget(protocol_page)  # index 2
+        self.main_stack.addWidget(settings_page)  # index 3
 
         # --- Assemble page layout ---
         main_layout = QVBoxLayout(self)
@@ -299,7 +324,7 @@ class ParamsPage(QWidget):
         self.mt_timeout_widget.clear()
 
         title = "Single Delay"
-        value = 0.0          # default: 0.1 s
+        value = 0.0          # default: 0.0 s
         lo, hi = 0.0, 2.0    # allowed range (s)
         step = 0.1           # increment (s)
         unit = "Seconds"
@@ -347,9 +372,6 @@ class ParamsPage(QWidget):
             except (TypeError, ValueError):
                 pass
 
-        if self.mt_timeout_widget.count() > 0:
-            item = self.mt_timeout_widget.item(0)
-
         row_widget = self.mt_timeout_widget.itemWidget(item)
         if row_widget is None:
             return 0.0
@@ -360,7 +382,7 @@ class ParamsPage(QWidget):
             return 0.0
 
     # ------------------------------------------------------------------
-    #   MT / PROTOCOL pages
+    #   MT / PROTOCOL / SETTINGS pages
     # ------------------------------------------------------------------
     def _create_mt_page(self) -> QWidget:
         """
@@ -371,7 +393,6 @@ class ParamsPage(QWidget):
         page = QWidget()
         layout = QHBoxLayout(page)
         layout.setContentsMargins(8, 5, 8, 5)
-        #layout.setSpacing(16)
 
         # Left: MT gauge in the same fixed-width container
         left_container = self._create_gauge_column_widget(self.mt_gauge)
@@ -424,7 +445,7 @@ class ParamsPage(QWidget):
         """
         Protocol selection page content:
 
-            [ protocol list | placeholder | param list ]
+            [ protocol list | placeholder ]
         """
         page = QWidget()
         layout = QHBoxLayout(page)
@@ -439,6 +460,34 @@ class ParamsPage(QWidget):
         right_col = QVBoxLayout()
         self.protocol_placeholder.setFixedSize(280, 280)
         right_col.addWidget(self.protocol_placeholder, alignment=Qt.AlignCenter)
+        layout.addLayout(right_col, stretch=1)
+
+        return page
+
+    def _create_settings_page(self) -> QWidget:
+        """
+        Settings page content:
+
+            [ About / info | settings NavigationListWidget ]
+        """
+        page = QWidget()
+        layout = QHBoxLayout(page)
+        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setSpacing(16)
+
+        # Left: About section
+        left_col = QVBoxLayout()
+        left_col.addWidget(self.settings_about_label, stretch=1)
+        left_col.addStretch(1)
+        layout.addLayout(left_col, stretch=1)
+
+        # Right: Settings list
+        right_col = QVBoxLayout()
+        # title = QLabel("Settings", page)
+        # title.setAlignment(Qt.AlignCenter)
+        # right_col.addWidget(title)
+        right_col.addWidget(self.settings_list_widget, stretch=1)
+
         layout.addLayout(right_col, stretch=1)
 
         return page
@@ -459,6 +508,38 @@ class ParamsPage(QWidget):
             )
         if widget.count() > 0:
             widget.setCurrentRow(0)
+
+    # ------------------------------------------------------------------
+    #   Settings list helpers
+    # ------------------------------------------------------------------
+    def _init_settings_list(self) -> None:
+        """Initialise Settings page NavigationListWidget (no suffix/bounds)."""
+        self.settings_list_widget.clear()
+
+        theme_text = "Dark" if self.current_theme.lower() == "dark" else "Light"
+        self._pending_theme = self.current_theme
+
+        buzzer_text = "On" if self.buzzer_enabled else "Off"
+        self._pending_buzzer = self.buzzer_enabled
+
+        # Theme row
+        self.settings_list_widget.add_item(
+            title="Theme",
+            value=theme_text,
+            bounds="",
+            data={"key": "theme", "value": theme_text},
+        )
+
+        # Buzzer row
+        self.settings_list_widget.add_item(
+            title="Buzzer",
+            value=buzzer_text,
+            bounds="",
+            data={"key": "buzzer", "value": buzzer_text},
+        )
+
+        if self.settings_list_widget.count() > 0:
+            self.settings_list_widget.setCurrentRow(0)
 
     # ------------------------------------------------------------------
     #   Backend binding
@@ -490,13 +571,14 @@ class ParamsPage(QWidget):
             self._on_session_start_requested
         )
 
-        # Extra session controls (Protocol / MT / Theme)
+        # Extra session controls (Protocol / MT / Settings)
         if hasattr(self.session_controls, "protocolRequested"):
             self.session_controls.protocolRequested.connect(
                 self._on_protocols_list_requested
             )
-        if hasattr(self.session_controls, "themeToggleRequested"):
-            self.session_controls.themeToggleRequested.connect(self._toggle_theme)
+        if hasattr(self.session_controls, "settingsRequested"):
+            # This button now opens/closes Settings session
+            self.session_controls.settingsRequested.connect(self._on_settings_requested)
         if hasattr(self.session_controls, "mtRequested"):
             self.session_controls.mtRequested.connect(self._on_mt_requested)
 
@@ -825,13 +907,61 @@ class ParamsPage(QWidget):
 
         new_val = cur_val + delta * step
         new_val = max(lo, min(hi, new_val))
-        new_val = round(new_val * 10.0) / 10.0  # snap to 0.5s grid
+        new_val = round(new_val * 10.0) / 10.0
 
         row_widget.set_value(new_val)
         suffix = f"{unit}   ({lo:.1f}–{hi:.1f})"
         row_widget.set_suffix(suffix)
 
         meta["timeout_s"] = new_val
+        item.setData(Qt.UserRole, meta)
+
+    def _modify_settings_value(self, delta: int) -> None:
+        """
+        Use encoder steps to toggle Theme / Buzzer rows in Settings mode.
+        """
+        if delta == 0:
+            return
+        if self.settings_list_widget.count() == 0:
+            return
+
+        item = self.settings_list_widget.currentItem()
+        if not item:
+            return
+
+        row_widget = self.settings_list_widget.itemWidget(item)
+        meta = item.data(Qt.UserRole) or {}
+        key = meta.get("key", "")
+
+        if row_widget is None or not key:
+            return
+
+        try:
+            cur_val = str(row_widget.get_value())
+        except Exception:
+            cur_val = str(meta.get("value", ""))
+
+        cur_lower = cur_val.strip().lower()
+
+        if key == "theme":
+            if cur_lower.startswith("dark"):
+                new_val = "Light"
+                self._pending_theme = "light"
+            else:
+                new_val = "Dark"
+                self._pending_theme = "dark"
+        elif key == "buzzer":
+            if cur_lower.startswith("on"):
+                new_val = "Off"
+                self._pending_buzzer = False
+            else:
+                new_val = "On"
+                self._pending_buzzer = True
+        else:
+            return
+
+        row_widget.set_value(new_val)
+        meta["value"] = new_val
         item.setData(Qt.UserRole, meta)
 
     # ------------------------------------------------------------------
@@ -849,7 +979,8 @@ class ParamsPage(QWidget):
         gb.startPausePressed.connect(self._gpio_guard.wrap(self._on_session_start_requested))
         gb.stopPressed.connect(self._gpio_guard.wrap(self._on_session_stop_requested))
         gb.protocolPressed.connect(self._gpio_guard.wrap(self._on_protocols_list_requested))
-        gb.reservedPressed.connect(self._gpio_guard.wrap(self._toggle_theme))
+        # Reserved button now also opens Settings
+        gb.reservedPressed.connect(self._gpio_guard.wrap(self._on_settings_requested))
         gb.singlePulsePressed.connect(self._gpio_guard.wrap(self._single_pulse_requested))
         if hasattr(gb, "mtPressed"):
             gb.mtPressed.connect(self._gpio_guard.wrap(self._on_mt_requested))
@@ -863,21 +994,38 @@ class ParamsPage(QWidget):
             self._modify_mt_timeout(step)
             return
 
+        # In Settings edit mode, toggle settings rows
+        if self.session_state == SessionState.SETTINGS_EDIT:
+            self._modify_settings_value(step)
+            return
+
         self._modify_value(float(step))
 
     def _on_nav_up(self) -> None:
         if self.session_state == SessionState.MT_EDIT:
             return
+
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self.protocol_list_widget.select_previous()
+            return
+
+        if self.session_state == SessionState.SETTINGS_EDIT:
+            self.settings_list_widget.select_previous()
+            return
 
         self.list_widget.select_previous()
 
     def _on_nav_down(self) -> None:
         if self.session_state == SessionState.MT_EDIT:
             return
+
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self.protocol_list_widget.select_next()
+            return
+
+        if self.session_state == SessionState.SETTINGS_EDIT:
+            self.settings_list_widget.select_next()
+            return
 
         self.list_widget.select_next()
 
@@ -908,12 +1056,14 @@ class ParamsPage(QWidget):
 
     def _start_session(self, is_resume: bool = False) -> None:
         """
-        Transitions the UI to RUNNING state. 
+        Transitions the UI to RUNNING state.
         Triggers the pulse widget to either start fresh or resume.
         """
         if not self.enabled or not self.coil_connected:
             return
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state in (SessionState.MT_EDIT,
+                                  SessionState.PROTOCOL_EDIT,
+                                  SessionState.SETTINGS_EDIT):
             return
 
         self._set_session_state(SessionState.RUNNING)
@@ -945,7 +1095,9 @@ class ParamsPage(QWidget):
         """
         Transitions UI to IDLE state and resets the pulse widget.
         """
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state in (SessionState.MT_EDIT,
+                                  SessionState.PROTOCOL_EDIT,
+                                  SessionState.SETTINGS_EDIT):
             return
 
         self._set_session_state(SessionState.IDLE)
@@ -972,6 +1124,11 @@ class ParamsPage(QWidget):
             self._set_backend_state("idle", force=True)
             return
 
+        if self.session_state == SessionState.SETTINGS_EDIT:
+            self._on_settings_apply()
+            self._set_backend_state("idle", force=True)
+            return
+
         if not self.enabled or not self.coil_connected:
             return
 
@@ -983,7 +1140,11 @@ class ParamsPage(QWidget):
             self._pause_session()
 
     def _on_session_stop_requested(self) -> None:
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state in (
+            SessionState.MT_EDIT,
+            SessionState.PROTOCOL_EDIT,
+            SessionState.SETTINGS_EDIT,
+        ):
             return
         self._stop_session()
 
@@ -993,6 +1154,9 @@ class ParamsPage(QWidget):
             return
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self._on_protocol_cancel()
+            return
+        if self.session_state == SessionState.SETTINGS_EDIT:
+            self._on_settings_cancel()
             return
 
         if self.protocol_manager is None:
@@ -1009,7 +1173,7 @@ class ParamsPage(QWidget):
         self._session_btn_labels_backup = {
             "protocol": sc.protocol_frame.text(),
             "mt": sc.mt_frame.text(),
-            "theme": sc.theme_frame.text(),
+            "settings": sc.settings_frame.text(),
             "stop": sc.stop_frame.text(),
             "start": sc.start_pause_frame.text(),
         }
@@ -1020,7 +1184,7 @@ class ParamsPage(QWidget):
         sc.start_pause_frame.setText(apply_label)
 
         sc.mt_frame.hide()
-        sc.theme_frame.hide()
+        sc.settings_frame.hide()
         sc.stop_frame.hide()
 
     def _restore_session_controls(self) -> None:
@@ -1030,8 +1194,8 @@ class ParamsPage(QWidget):
                 self._session_btn_labels_backup.get("protocol", "Protocol")
             )
             sc.mt_frame.setText(self._session_btn_labels_backup.get("mt", "MT"))
-            sc.theme_frame.setText(
-                self._session_btn_labels_backup.get("theme", "Toggle Theme")
+            sc.settings_frame.setText(
+                self._session_btn_labels_backup.get("settings", "Settings")
             )
             sc.stop_frame.setText(self._session_btn_labels_backup.get("stop", "Stop"))
             sc.start_pause_frame.setText(
@@ -1039,11 +1203,15 @@ class ParamsPage(QWidget):
             )
 
         sc.mt_frame.show()
-        sc.theme_frame.show()
+        sc.settings_frame.show()
         sc.stop_frame.show()
 
     def _enter_mt_mode(self) -> None:
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state in (
+            SessionState.MT_EDIT,
+            SessionState.PROTOCOL_EDIT,
+            SessionState.SETTINGS_EDIT,
+        ):
             return
 
         if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
@@ -1244,11 +1412,86 @@ class ParamsPage(QWidget):
             return
 
         proto = self.protocol_manager.get_protocol(self._selected_protocol_name)
-        if proto:
+        if proto and self.current_protocol is not None:
             proto.subject_mt_percent = self.current_protocol.subject_mt_percent
             self.set_protocol(proto)
 
         self._exit_protocol_mode()
+
+    # ------------------------------------------------------------------
+    #   Settings mode: enter/exit/apply/cancel
+    # ------------------------------------------------------------------
+    def _on_settings_requested(self) -> None:
+        # If already in some edit mode, treat Settings button like "Cancel"
+        if self.session_state == SessionState.MT_EDIT:
+            self._on_mt_cancel()
+            return
+        if self.session_state == SessionState.PROTOCOL_EDIT:
+            self._on_protocol_cancel()
+            return
+        if self.session_state == SessionState.SETTINGS_EDIT:
+            self._on_settings_cancel()
+            return
+
+        self._enter_settings_mode()
+
+    def _enter_settings_mode(self) -> None:
+        if self.session_state in (
+            SessionState.MT_EDIT,
+            SessionState.PROTOCOL_EDIT,
+            SessionState.SETTINGS_EDIT,
+        ):
+            return
+
+        if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
+            self._stop_session()
+
+        # Sync pending with current
+        self._pending_theme = self.current_theme
+        self._pending_buzzer = self.buzzer_enabled
+        self._init_settings_list()
+
+        self._set_session_state(SessionState.SETTINGS_EDIT)
+        self.main_stack.setCurrentIndex(3)  # Settings page
+
+        self._backup_session_controls()
+        self._apply_edit_controls("Apply")
+
+        self._apply_enable_state()
+
+    def _exit_settings_mode(self) -> None:
+        if self.session_state != SessionState.SETTINGS_EDIT:
+            return
+
+        self._set_session_state(SessionState.IDLE)
+        self.main_stack.setCurrentIndex(0)
+        self._restore_session_controls()
+        self._apply_enable_state()
+
+    def _apply_settings(self) -> None:
+        # Theme
+        theme = self._pending_theme or self.current_theme
+        theme = theme.lower()
+        if theme not in ("dark", "light"):
+            theme = "dark"
+
+        if theme != self.current_theme:
+            self.current_theme = theme
+            self._apply_theme_to_app(self.current_theme)
+            if self.current_protocol:
+                self._sync_ui_from_protocol()
+
+        # Buzzer
+        self.buzzer_enabled = bool(self._pending_buzzer)
+        # TODO: wire this to backend/gpio when you have an API there.
+
+    def _on_settings_cancel(self) -> None:
+        self._exit_settings_mode()
+
+    def _on_settings_apply(self) -> None:
+        self._apply_settings()
+        self._exit_settings_mode()
+        self._gpio_guard.block()
 
     # ------------------------------------------------------------------
     #   Coil connection state (from uC)
@@ -1328,7 +1571,11 @@ class ParamsPage(QWidget):
         if sc is None:
             return
 
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state in (
+            SessionState.MT_EDIT,
+            SessionState.PROTOCOL_EDIT,
+            SessionState.SETTINGS_EDIT,
+        ):
             sc.stop_frame.setEnabled(False)
             sc.start_pause_frame.setEnabled(True)
             return
@@ -1354,7 +1601,11 @@ class ParamsPage(QWidget):
                     pass
 
     def _update_intensity_for_enable(self, enabled: bool) -> None:
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state in (
+            SessionState.MT_EDIT,
+            SessionState.PROTOCOL_EDIT,
+            SessionState.SETTINGS_EDIT,
+        ):
             if enabled:
                 self._set_backend_state("idle")
             else:
@@ -1395,7 +1646,7 @@ class ParamsPage(QWidget):
 
         self.system_enabled = self.enabled and self.coil_connected and normal_temp
 
-        # if we were in MT and system gets disabled, leave MT page <<<
+        # if we were in MT and system gets disabled, leave MT page
         if self.session_state == SessionState.MT_EDIT and not self.system_enabled:
             self._exit_mt_mode()
             return
@@ -1410,7 +1661,11 @@ class ParamsPage(QWidget):
         if sc is not None:
             mt_enabled = self.system_enabled and (
                 self.session_state
-                not in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT)
+                not in (
+                    SessionState.MT_EDIT,
+                    SessionState.PROTOCOL_EDIT,
+                    SessionState.SETTINGS_EDIT,
+                )
             )
             sc.mt_frame.setEnabled(mt_enabled)
 
@@ -1455,14 +1710,11 @@ class ParamsPage(QWidget):
         self._update_bottom_panel_style()
 
     def _toggle_theme(self) -> None:
-        if self.current_theme == "dark":
-            self.current_theme = "light"
-        else:
-            self.current_theme = "dark"
-
-        self._apply_theme_to_app(self.current_theme)
-        if self.current_protocol:
-            self._sync_ui_from_protocol()
+        """
+        Kept only for GPIO reserved button compatibility.
+        Now just opens/closes Settings mode.
+        """
+        self._on_settings_requested()
 
     def _toggle_icons_on_theme(self, theme: str) -> None:
         # Build an absolute path (adjust this to your real project layout if needed)
@@ -1493,7 +1745,11 @@ class ParamsPage(QWidget):
                 self._apply_enable_state()
 
     def _on_intensity_changed(self, v: int) -> None:
-        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT):
+        if self.session_state in (
+            SessionState.MT_EDIT,
+            SessionState.PROTOCOL_EDIT,
+            SessionState.SETTINGS_EDIT,
+        ):
             return
 
         if self.intensity_gauge.mode() != GaugeMode.INTENSITY:
@@ -1566,6 +1822,9 @@ class ParamsPage(QWidget):
             return
 
         if self.session_state == SessionState.PROTOCOL_EDIT:
+            return
+
+        if self.session_state == SessionState.SETTINGS_EDIT:
             return
 
         v_f = float(val)
