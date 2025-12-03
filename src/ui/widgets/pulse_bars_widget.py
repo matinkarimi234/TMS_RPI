@@ -27,7 +27,7 @@ class CountdownCircle(QWidget):
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def sizeHint(self):
-        return QSize(60, 60)
+        return QSize(120, 120)
 
     def set_fraction_and_label(self, frac: float, seconds_left: float):
         # clamp
@@ -48,7 +48,7 @@ class CountdownCircle(QWidget):
         painter.setRenderHint(QPainter.Antialiasing, True)
 
         d = min(self.width(), self.height())
-        rect = QRectF(2, 2, d - 4, d - 4)
+        rect = QRectF(4, 4, d - 8, d - 8)
 
         mid_color = self.palette().color(QPalette.Mid)
         hi_color = self.palette().color(QPalette.Highlight)
@@ -63,7 +63,7 @@ class CountdownCircle(QWidget):
         # remaining arc
         remaining = 1.0 - self._fraction
         span_deg = 360.0 * remaining
-        pen_arc = QPen(hi_color, 4)
+        pen_arc = QPen(hi_color, 6)
         painter.setPen(pen_arc)
         painter.drawArc(rect, 90 * 16, -int(span_deg * 16))
 

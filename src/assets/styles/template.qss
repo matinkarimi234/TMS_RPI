@@ -34,6 +34,10 @@ PulseBarsWidget QLabel#timeLabel {
     margin:           2px 0;
     font-size:        11px;
 }
+CountdownCircle{
+    font-size: 22px;
+    font-weight: bold;
+}
 
 PulseBarsWidget QLabel#statusLabel {
     color: {{TEXT_COLOR_SECONDARY}};
