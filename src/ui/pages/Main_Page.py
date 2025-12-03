@@ -1483,6 +1483,9 @@ class ParamsPage(QWidget):
 
         # Buzzer
         self.buzzer_enabled = bool(self._pending_buzzer)
+
+        if self.backend is not None:
+            self.backend.request_param_update(self.current_protocol, self.buzzer_enabled)
         # TODO: wire this to backend/gpio when you have an API there.
 
     def _on_settings_cancel(self) -> None:
