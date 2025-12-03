@@ -47,11 +47,11 @@ class SessionControlWidget(QWidget):
     Frame "buttons" in this order (left to right):
       - Protocol   (pinned to left edge)
       - MT
-      - Toggle Theme
+      - Settings
       - Stop
       - Start/Pause (pinned to right edge)
 
-    MT / Toggle Theme / Stop are centered as a group.
+    MT / Settings / Stop are centered as a group.
     """
 
     startRequested = Signal()
@@ -60,7 +60,7 @@ class SessionControlWidget(QWidget):
 
     protocolRequested = Signal()
     mtRequested = Signal()
-    themeToggleRequested = Signal()
+    settingsRequested = Signal()
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -74,14 +74,14 @@ class SessionControlWidget(QWidget):
         # --- Create all buttons ---
         self.protocol_frame = FrameButton("Protocol", self)
         self.mt_frame = FrameButton("MT", self)
-        self.theme_frame = FrameButton("Toggle Theme", self)
+        self.settings_frame = FrameButton("Settings", self)
         self.stop_frame = FrameButton("Stop", self)
         self.start_pause_frame = FrameButton("Start", self)
 
         for btn in (
             self.protocol_frame,
             self.mt_frame,
-            self.theme_frame,
+            self.settings_frame,
             self.stop_frame,
             self.start_pause_frame,
         ):
@@ -98,7 +98,7 @@ class SessionControlWidget(QWidget):
         last_btn = self.start_pause_frame
 
         # Middle group: centered
-        center_buttons = [self.mt_frame, self.theme_frame, self.stop_frame]
+        center_buttons = [self.mt_frame, self.settings_frame, self.stop_frame]
         center_lay = QHBoxLayout()
         center_lay.setContentsMargins(0, 0, 0, 0)
         center_lay.setSpacing(63)  # distance between middle buttons
@@ -125,7 +125,7 @@ class SessionControlWidget(QWidget):
         self.start_pause_frame.clicked.connect(self._on_start_pause_clicked)
         self.protocol_frame.clicked.connect(self._on_protocol_clicked)
         self.mt_frame.clicked.connect(self._on_mt_clicked)
-        self.theme_frame.clicked.connect(self._on_theme_clicked)
+        self.settings_frame.clicked.connect(self._on_settings_clicked)
 
     # ----- public API to keep label in sync with state -----
 
@@ -153,7 +153,7 @@ class SessionControlWidget(QWidget):
     def setStartStopEnabled(self, enabled: bool):
         """
         Enable/disable ONLY Stop + Start/Pause.
-        Protocol / MT / Theme are never touched here.
+        Protocol / MT / Settings are never touched here.
         This is intended to be called from EN logic.
         """
         self.stop_frame.setEnabled(enabled)
@@ -176,8 +176,8 @@ class SessionControlWidget(QWidget):
     def _on_mt_clicked(self):
         self.mtRequested.emit()
 
-    def _on_theme_clicked(self):
-        self.themeToggleRequested.emit()
+    def _on_settings_clicked(self):
+        self.settingsRequested.emit()
 
 
 # Optional: tiny test harness

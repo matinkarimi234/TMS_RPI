@@ -7,3 +7,4 @@ class SessionState(Enum):
     PAUSED = 2
     MT_EDIT = 3
     PROTOCOL_EDIT = 4
+    SETTINGS_EDIT = 5
