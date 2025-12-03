@@ -147,7 +147,7 @@ class CommandManager(QObject):
     # ------------------------------------------------------------------
     #   Set-params frame
     # ------------------------------------------------------------------
-    def build_set_params(self, proto) -> bytes:
+    def build_set_params(self, proto, buzzer_enabled: bool) -> bytes:
         """
         Build a 'Set Params' frame from the current TMSProtocol object.
 
@@ -166,33 +166,42 @@ class CommandManager(QObject):
         buffer[3] = proto.absolute_intensity & 0xFF
         buffer[4] = proto.subject_mt_percent & 0xFF
 
-        # Frequency * 10 (e.g. 10.0 Hz -> 100)
-        freq10 = int(float(getattr(proto, "frequency_hz", 0.0)) * 10.0)
-        buffer[5] = (freq10 & 0xFF00) >> 8
-        buffer[6] = (freq10 & 0x00FF) >> 0
+        freq = float(getattr(proto, "frequency_hz", 0.0))
+        coded_freq = self._encode_freq(freq)
+        buffer[5] = coded_freq  # single byte
 
         # Inter-train interval (integer seconds)
-        buffer[7] = int(getattr(proto, "inter_train_interval_s", 0.0) * 2) & 0xFF
+        buffer[6] = int(getattr(proto, "inter_train_interval_s", 0.0) * 2) & 0xFF
 
         # Inter-pulse interval in ms
         ipi = int(float(getattr(proto, "inter_pulse_interval_ms", 0.0)))
-        buffer[8] = (ipi & 0xFF00) >> 8
-        buffer[9] = (ipi & 0x00FF) >> 0
+        buffer[7] = (ipi & 0xFF00) >> 8
+        buffer[8] = (ipi & 0x00FF) >> 0
 
         # Ramp fraction * 10 (0.7–1.0 -> 7–10)
         ramp_frac10 = int(float(getattr(proto, "ramp_fraction", 1.0)) * 10.0)
-        buffer[10] = ramp_frac10 & 0xFF
+        buffer[9] = ramp_frac10 & 0xFF
 
         # Ramp steps (1–10)
-        buffer[11] = int(getattr(proto, "ramp_steps", 1)) & 0xFF
+        buffer[10] = int(getattr(proto, "ramp_steps", 1)) & 0xFF
 
         # Train count
-        buffer[12] = int(getattr(proto, "train_count", 0)) & 0xFF
+        buffer[11] = int(getattr(proto, "train_count", 0)) & 0xFF
 
         # Pulses per train
         ppt = int(getattr(proto, "pulses_per_train", 0))
-        buffer[13] = (ppt & 0xFF00) >> 8
-        buffer[14] = (ppt & 0x00FF) >> 0
+        buffer[12] = (ppt & 0xFF00) >> 8
+        buffer[13] = (ppt & 0x00FF) >> 0
+
+        bit0 = 1 if buzzer_enabled else 0
+        bit1= 0  # reserved for future
+        bit2= 0  # reserved for future
+        bit3= 0  # reserved for future
+        bit4= 0  # reserved for future
+        bit5= 0  # reserved for future
+        bit6= 0  # reserved for future
+        
+        buffer[14] = (bit0 << 0) | (bit1 << 1) | (bit2 << 2) | (bit3 << 3) | (bit4 << 4) | (bit5 << 5) | (bit6 << 6)
 
         # checksum
         cs = Calculate_Checksum(buffer, UART_TX_SIZE)
@@ -201,3 +210,22 @@ class CommandManager(QObject):
         frame = bytes(buffer)
         self.packet_ready.emit(frame)
         return frame
+    
+    def _encode_freq(freq_hz: float) -> int:
+        # 0 → special case (no freq)
+        if freq_hz == 0:
+            return 0
+
+        # 0.1 to 0.9
+        if 0.0 < freq_hz < 1.0:
+            code = round(freq_hz * 10)
+            # 0.1 -> 1, ..., 0.9 -> 9
+            return max(1, min(9, code))
+
+        # 1 to 100
+        if 1.0 <= freq_hz <= 100.0:
+            # 1 Hz -> 10, 2 Hz -> 11, ..., 100 Hz -> 109
+            return int(round(freq_hz)) + 9
+
+        raise ValueError("Frequency out of range")
+

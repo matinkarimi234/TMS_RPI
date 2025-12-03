@@ -112,7 +112,7 @@ class Uart_Backend(QObject):
     #   Parameters from UI
     # ------------------------------------------------------------------
     @Slot(object)
-    def request_param_update(self, proto):
+    def request_param_update(self, proto, buzzer_enabled: bool = True):
         """
         UI asks: 'please update uC params to match this protocol'.
 
@@ -125,7 +125,7 @@ class Uart_Backend(QObject):
             self._last_params_frame = None
             return
 
-        self._last_params_frame = self.cmd_m.build_set_params(proto)
+        self._last_params_frame = self.cmd_m.build_set_params(proto, buzzer_enabled)
         # (Optional) could send once immediately here if you want.
 
     # ------------------------------------------------------------------
