@@ -99,6 +99,9 @@ class ParamsPage(QWidget):
         self.session_active: bool = False   # True only when running
         self.session_paused: bool = False   # True only when paused
 
+        # --- Log / error state ---
+        self._log_error_latched: bool = False
+
         # Global enable flag (front panel EN button)
         self.enabled: bool = False
 
@@ -700,8 +703,23 @@ class ParamsPage(QWidget):
         if not hasattr(self, "session_log_widget"):
             return
 
+        # If an error is currently latched, don't overwrite it with previews
+        if getattr(self, "_log_error_latched", False):
+            return
+
         # RUNNING/PAUSED: live is driven by sessionRemainingChanged
         if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
+            return
+
+        # PROTOCOL_EDIT: show selected protocol preview
+        if self.session_state == SessionState.PROTOCOL_EDIT:
+            if self.protocol_manager and self._selected_protocol_name:
+                proto = self.protocol_manager.get_protocol(self._selected_protocol_name)
+                if proto:
+                    pulses, dur = self._compute_protocol_session_stats(proto)
+                    self.session_log_widget.show_preview(pulses, dur, source="Protocol")
+                    return
+            self.session_log_widget.show_blank()
             return
 
         # MT / Settings: blank for now
@@ -717,19 +735,6 @@ class ParamsPage(QWidget):
                 self.session_log_widget.show_preview(pulses, dur, source="Current")
             else:
                 self.session_log_widget.show_blank()
-            return
-
-        # PROTOCOL_EDIT: we still need to compute for the *selected* proto,
-        # because the pulse widget is configured with the current proto, not the
-        # one you’re hovering over in the list.
-        if self.session_state == SessionState.PROTOCOL_EDIT:
-            if self.protocol_manager and self._selected_protocol_name:
-                proto = self.protocol_manager.get_protocol(self._selected_protocol_name)
-                if proto:
-                    pulses, dur = self._compute_protocol_session_stats(proto)
-                    self.session_log_widget.show_preview(pulses, dur, source="Protocol")
-                    return
-            self.session_log_widget.show_blank()
             return
 
     def _get_current_param_meta(self) -> Tuple[Optional[str], Dict[str, Any]]:
@@ -1612,6 +1617,8 @@ class ParamsPage(QWidget):
         if not self.coil_connected:
             self._set_backend_state("error")
             self.enabled = False
+            # latch error
+            self._log_error_latched = True
             self.session_log_widget.show_error("Coil disconnected")
 
         self._apply_enable_state()
@@ -1774,14 +1781,21 @@ class ParamsPage(QWidget):
             )
             sc.mt_frame.setEnabled(mt_enabled)
 
-        # If system back to normal, refresh log for current state
+        # If system back to normal, clear error and refresh log for current state
         if self.system_enabled:
+            self._log_error_latched = False
             self._update_log_widget_for_current_state()
 
     def _force_mt_at_disable(self, en: bool):
         if not en and self.current_protocol:
             self.current_protocol.subject_mt_percent = 0
-            self.set_protocol(self.current_protocol)
+            # update protocol fields but DO NOT refresh the log here
+            proto = self.current_protocol
+            try:
+                self.intensity_gauge.setFromProtocol(proto)
+                self._sync_ui_from_protocol()
+            except Exception:
+                pass
 
     def _on_en_pressed(self) -> None:
         self.enabled = not self.enabled
@@ -1851,8 +1865,10 @@ class ParamsPage(QWidget):
             if self.coil_normal_Temperature:
                 self._set_backend_state("error")
                 self.coil_normal_Temperature = False
-                self._apply_enable_state()
+                # latch error
+                self._log_error_latched = True
                 self.session_log_widget.show_error("Coil temperature too high")
+                self._apply_enable_state()
 
     def _on_intensity_changed(self, v: int) -> None:
         if self.session_state in (
@@ -1987,8 +2003,10 @@ class ParamsPage(QWidget):
             if self.resistor_normal_Temperature:
                 self._set_backend_state("error")
                 self.resistor_normal_Temperature = False
-                self._apply_enable_state()
+                # latch error
+                self._log_error_latched = True
                 self.session_log_widget.show_error("Resistor temperature too high")
+                self._apply_enable_state()
 
 
     def _on_igbt_Temperature(self, temperature: float):
@@ -2000,5 +2018,7 @@ class ParamsPage(QWidget):
             if self.igbt_normal_Temperature:
                 self._set_backend_state("error")
                 self.igbt_normal_Temperature = False
-                self._apply_enable_state()
+                # latch error
+                self._log_error_latched = True
                 self.session_log_widget.show_error("IGBT temperature too high")
+                self._apply_enable_state()
