@@ -2,7 +2,7 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-from PySide6.QtCore import Qt, QRectF, QTimer, QSize, Signal
+from PySide6.QtCore import Qt, QRectF, QTimer, QSize, Signal, Property
 from PySide6.QtGui import QPainter, QPen, QFont, QPalette
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, QProgressBar
@@ -135,6 +135,16 @@ class PulseTrainView(QWidget):
         # train index (not drawn now, kept for future use)
         self._train_idx = 0
         self._train_count = 1
+
+        # Calculated
+        self._train_duration_s = 0.0         # T_train
+        self._total_session_s = 0.0          # T_session
+
+        # Remaining info (for parent / bindings)
+        self._rem_pulses = 0
+        self._total_pulses = 0
+        self._rem_seconds = 0.0
+        self._total_seconds = 0.0
 
     def sizeHint(self) -> QSize:
         return QSize(400, 160)
@@ -529,6 +539,8 @@ class PulseBarsWidget(QWidget):
     """
 
     sessionRemainingChanged = Signal(int, int, float, float)
+    pulsesRemainingChanged = Signal(int, int)   # (remaining, total)
+    timeRemainingChanged = Signal(float, float) # (remaining_s, total_s)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -854,7 +866,20 @@ class PulseBarsWidget(QWidget):
         done_p = int(total_p * frac)
         rem_p = max(0, total_p - done_p)
 
-        self.sessionRemainingChanged.emit(rem_p, total_p, rem_time, self._total_session_s)
+        # store for properties
+        self._rem_pulses = rem_p
+        self._total_pulses = total_p
+        self._rem_seconds = rem_time
+        self._total_seconds = self._total_session_s
+
+        # old combined signal (already used by progress bar)
+        self.sessionRemainingChanged.emit(
+            rem_p, total_p, rem_time, self._total_session_s
+        )
+
+        # new, more specific signals
+        self.pulsesRemainingChanged.emit(rem_p, total_p)
+        self.timeRemainingChanged.emit(rem_time, self._total_session_s)
 
     def _show_train_mode(self):
         self.train_view.setVisible(True)
@@ -868,6 +893,30 @@ class PulseBarsWidget(QWidget):
         tv_hint = self.train_view.sizeHint()
         prog_h = self.progressbar.sizeHint().height()
         return QSize(tv_hint.width(), tv_hint.height() + prog_h)
+    
+    # ---------- Qt Properties for parent access ----------
+
+    def _get_remaining_pulses(self) -> int:
+        return self._rem_pulses
+
+    def _get_total_pulses(self) -> int:
+        return self._total_pulses
+
+    def _get_remaining_seconds(self) -> float:
+        return self._rem_seconds
+
+    def _get_total_seconds(self) -> float:
+        return self._total_seconds
+
+    remainingPulses = Property(int, _get_remaining_pulses,
+                               notify=pulsesRemainingChanged)
+    totalPulses = Property(int, _get_total_pulses,
+                           notify=pulsesRemainingChanged)
+
+    remainingSeconds = Property(float, _get_remaining_seconds,
+                                notify=timeRemainingChanged)
+    totalSeconds = Property(float, _get_total_seconds,
+                            notify=timeRemainingChanged)
 
     # ---------- util ----------
 
