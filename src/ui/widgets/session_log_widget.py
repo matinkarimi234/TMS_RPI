@@ -38,6 +38,7 @@ class SessionLogWidget(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(2)
 
+        # live tracking
         self._live_total_pulses: int = 0
         self._live_delivered_pulses: int = 0
         self._last_rem_pulses: Optional[int] = None
@@ -69,8 +70,12 @@ class SessionLogWidget(QWidget):
 
     # ---------- public API ----------
 
-    def show_preview(self, total_pulses: int, total_time_s: float,
-                     source: str = "Current") -> None:
+    def show_preview(
+        self,
+        total_pulses: int,
+        total_time_s: float,
+        source: str = "Current",
+    ) -> None:
         """
         Preview of the whole session for a set of parameters / protocol.
         """
@@ -91,28 +96,33 @@ class SessionLogWidget(QWidget):
         """
         Live mode during stimulation.
         Pulses are ONLY incremented when rem_pulses actually decreases.
-        ITI will still update the time, but won't touch the pulse counter.
+        ITI may change time, but NOT pulses.
         """
+        self._is_error = False
+
         # --- pulses ---
         self._live_total_pulses = max(0, int(total_pulses))
+        rem_pulses = max(0, int(rem_pulses))
 
         if self._last_rem_pulses is None:
-            # first call in this session
+            # first call for this run
             self._last_rem_pulses = rem_pulses
-            self._live_delivered_pulses = max(0, self._live_total_pulses - rem_pulses)
+            self._live_delivered_pulses = max(
+                0, self._live_total_pulses - rem_pulses
+            )
         else:
             if rem_pulses < self._last_rem_pulses:
-                # some pulses actually fired → increment by the delta
+                # real pulses fired → increment by delta
                 delta = self._last_rem_pulses - rem_pulses
                 self._live_delivered_pulses += delta
                 self._last_rem_pulses = rem_pulses
             elif rem_pulses > self._last_rem_pulses:
-                # probably a new session or reset: recompute from scratch
+                # new session / reset
                 self._live_delivered_pulses = max(
                     0, self._live_total_pulses - rem_pulses
                 )
                 self._last_rem_pulses = rem_pulses
-            # if rem_pulses == _last_rem_pulses → ITI ticking, do NOT touch pulses
+            # equal → ITI, don't touch pulse counter
 
         # clamp
         if self._live_delivered_pulses < 0:
@@ -120,19 +130,17 @@ class SessionLogWidget(QWidget):
         if self._live_delivered_pulses > self._live_total_pulses:
             self._live_delivered_pulses = self._live_total_pulses
 
-        pulses_text = f"{self._live_delivered_pulses}/{self._live_total_pulses} pulses"
-
-        # --- time (this can still count down smoothly, including ITI) ---
+        # --- time ---
         rem_s = max(0.0, rem_s)
         total_s = max(rem_s, total_s)
-        time_text = f"{rem_s:0.1f}s / {total_s:0.1f}s"
+        elapsed_s = max(0.0, total_s - rem_s)
 
-        # now push to your labels:
+        pulses_text = f"Pulses: {self._live_delivered_pulses}/{self._live_total_pulses}"
+        time_text = f"Time: {self._fmt_time(elapsed_s)} / {self._fmt_time(total_s)}"
+
         self._title_label.setText("Stimulation")
-        self._pulses_label.setText(pulses_text)
-        self._time_label.setText(time_text)
+        self._text_label.setText(f"{pulses_text}\n{time_text}")
 
-        self._mode = "live"
         self.update()
 
     def show_blank(self) -> None:

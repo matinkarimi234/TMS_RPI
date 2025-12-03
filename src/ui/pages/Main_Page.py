@@ -1193,7 +1193,7 @@ class ParamsPage(QWidget):
         self._set_session_state(SessionState.IDLE)
 
         self.pulse_widget.stop()
-        
+
         if hasattr(self.session_log_widget, "reset_live_state"):
             self.session_log_widget.reset_live_state()
             self.session_log_widget.show_blank()
@@ -1260,17 +1260,7 @@ class ParamsPage(QWidget):
 
         self._enter_protocol_mode()
 
-    def _on_session_remaining_changed(
-        self,
-        rem_pulses: int,
-        total_pulses: int,
-        rem_s: float,
-        total_s: float,
-    ) -> None:
-        """
-        Called every tick by PulseBarsWidget.
-        In RUNNING/PAUSED we show live remaining info in the log widget.
-        """
+    def _on_session_remaining_changed(self, rem_pulses, total_pulses, rem_s, total_s):
         if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
             self.session_log_widget.show_live(rem_pulses, total_pulses, rem_s, total_s)
 
