@@ -31,6 +31,11 @@ class SessionInfoWidget(QWidget):
         self._protocol_label.setObjectName("sessionInfoProtocolLabel")
         self._protocol_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
+        # MT row
+        self._mt_label = QLabel("MT: -", self)
+        self._mt_label.setObjectName("sessionInfoMtLabel")
+        self._mt_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
         # User row: icon + text
         self._user_icon_label = QLabel(self)
         self._user_icon_label.setObjectName("sessionInfoUserIcon")
@@ -48,10 +53,7 @@ class SessionInfoWidget(QWidget):
         user_row.addWidget(self._user_text_label)
         user_row.addStretch(1)
 
-        # MT row
-        self._mt_label = QLabel("MT: -", self)
-        self._mt_label.setObjectName("sessionInfoMtLabel")
-        self._mt_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
 
         # Main layout
         main = QVBoxLayout(self)
@@ -59,8 +61,8 @@ class SessionInfoWidget(QWidget):
         main.setContentsMargins(10, 3, 10, 10)  # left, top, right, bottom
         main.setSpacing(4)                       # vertical spacing between rows
         main.addWidget(self._protocol_label)
-        main.addLayout(user_row)
         main.addWidget(self._mt_label)
+        main.addLayout(user_row)
 
         self.setMinimumWidth(160)
 
@@ -68,6 +70,9 @@ class SessionInfoWidget(QWidget):
     # Public API
     # -------------------------------------------------------------
     def setProtocolName(self, name: str) -> None:
+        if len(name) > 20:
+            name = name[0:20]
+            name += "..."
         self._protocol_label.setText(f"Protocol: {name}")
 
     def setUserLabel(self, text: str) -> None:

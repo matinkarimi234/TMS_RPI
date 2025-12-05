@@ -64,4 +64,4 @@ class ListItemWidget(QWidget):
         self.bounds_label.setText(new_bounds)
 
     def sizeHint(self) -> QSize:
-        return QSize(200, 75)
+        return QSize(200, 55)

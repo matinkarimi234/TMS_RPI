@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Any, Dict
 import time
 from pathlib import Path
-from PySide6.QtCore import Signal, Qt, QSize
+from PySide6.QtCore import Signal, Qt, QSize, QTimer
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -115,6 +115,18 @@ class ParamsPage(QWidget):
         self._stimulation_start_time = 0.0
 
         self.system_enabled: bool = False
+
+        # --- Auto disable / auto discharge ---
+        # minutes: 0 = OFF
+        self.auto_disable_minutes: int = 0
+        self._pending_auto_disable_minutes: int = self.auto_disable_minutes
+        self._last_idle_enabled_ts: float = 0.0
+
+        # Periodic check for auto-disable
+        self._auto_disable_timer = QTimer(self)
+        self._auto_disable_timer.setInterval(1000)  # check every 1 s
+        self._auto_disable_timer.timeout.connect(self._check_auto_disable)
+        self._auto_disable_timer.start()
 
         # Track last backend "global" state to avoid spamming uC
         # possible values: None, "idle", "error"
@@ -426,8 +438,8 @@ class ParamsPage(QWidget):
         )
 
         text = QLabel(
-            "MT instructions / description\n"
-            "You can replace this with real content later.",
+            "MT Instruction\n"
+            "Gradually increase intensity while observing for a clear motor response in the target muscle.",
             page,
         )
         text.setWordWrap(True)
@@ -538,6 +550,13 @@ class ParamsPage(QWidget):
         buzzer_text = "On" if self.buzzer_enabled else "Off"
         self._pending_buzzer = self.buzzer_enabled
 
+        # Helper for auto-disable display
+        def _auto_disable_label(minutes: int) -> str:
+            return "Off" if minutes <= 0 else f"{minutes} min"
+
+        auto_disable_text = _auto_disable_label(self.auto_disable_minutes)
+        self._pending_auto_disable_minutes = self.auto_disable_minutes
+
         # Theme row
         self.settings_list_widget.add_item(
             title="Theme",
@@ -554,8 +573,17 @@ class ParamsPage(QWidget):
             data={"key": "buzzer", "value": buzzer_text},
         )
 
+        # Auto disable row
+        self.settings_list_widget.add_item(
+            title="Auto Disable",
+            value=auto_disable_text,
+            bounds="",
+            data={"key": "auto_disable", "minutes": self.auto_disable_minutes},
+        )
+
         if self.settings_list_widget.count() > 0:
             self.settings_list_widget.setCurrentRow(0)
+
 
     # ------------------------------------------------------------------
     #   Backend binding
@@ -1022,32 +1050,63 @@ class ParamsPage(QWidget):
         if row_widget is None or not key:
             return
 
-        try:
-            cur_val = str(row_widget.get_value())
-        except Exception:
-            cur_val = str(meta.get("value", ""))
-
-        cur_lower = cur_val.strip().lower()
+        # Multi-option list for auto-disable (minutes)
+        AUTO_DISABLE_OPTIONS = [0, 5, 10, 15, 20, 30]
 
         if key == "theme":
+            try:
+                cur_val = str(row_widget.get_value())
+            except Exception:
+                cur_val = str(meta.get("value", ""))
+
+            cur_lower = cur_val.strip().lower()
             if cur_lower.startswith("dark"):
                 new_val = "Light"
                 self._pending_theme = "light"
             else:
                 new_val = "Dark"
                 self._pending_theme = "dark"
+
+            row_widget.set_value(new_val)
+            meta["value"] = new_val
+
         elif key == "buzzer":
+            try:
+                cur_val = str(row_widget.get_value())
+            except Exception:
+                cur_val = str(meta.get("value", ""))
+
+            cur_lower = cur_val.strip().lower()
             if cur_lower.startswith("on"):
                 new_val = "Off"
                 self._pending_buzzer = False
             else:
                 new_val = "On"
                 self._pending_buzzer = True
+
+            row_widget.set_value(new_val)
+            meta["value"] = new_val
+
+        elif key == "auto_disable":
+            # current minutes from meta; default 0
+            cur_minutes = int(meta.get("minutes", 0))
+            if cur_minutes not in AUTO_DISABLE_OPTIONS:
+                cur_minutes = 0
+
+            idx = AUTO_DISABLE_OPTIONS.index(cur_minutes)
+            step = 1 if delta > 0 else -1
+            idx = (idx + step) % len(AUTO_DISABLE_OPTIONS)
+
+            new_minutes = AUTO_DISABLE_OPTIONS[idx]
+            self._pending_auto_disable_minutes = new_minutes
+
+            new_label = "Off" if new_minutes == 0 else f"{new_minutes} min"
+            row_widget.set_value(new_label)
+            meta["minutes"] = new_minutes
+
         else:
             return
 
-        row_widget.set_value(new_val)
-        meta["value"] = new_val
         item.setData(Qt.UserRole, meta)
 
     # ------------------------------------------------------------------
@@ -1140,9 +1199,16 @@ class ParamsPage(QWidget):
         self.session_active = (new_state == SessionState.RUNNING)
         self.session_paused = (new_state == SessionState.PAUSED)
 
+        # Track when we are enabled & idle (used for auto-disable timeout)
+        if new_state == SessionState.IDLE and self.enabled:
+            self._last_idle_enabled_ts = time.time()
+        elif new_state in (SessionState.RUNNING, SessionState.PAUSED):
+            self._last_idle_enabled_ts = 0.0
+
         # Update log widget for non-running modes
         if new_state not in (SessionState.RUNNING, SessionState.PAUSED):
             self._update_log_widget_for_current_state()
+
 
     def _start_session(self, is_resume: bool = False) -> None:
         """
@@ -1585,10 +1651,21 @@ class ParamsPage(QWidget):
         # Buzzer
         self.buzzer_enabled = bool(self._pending_buzzer)
 
+        # Auto disable (minutes)
+        self.auto_disable_minutes = int(self._pending_auto_disable_minutes)
+
+        # When you change the timeout and you're currently enabled & idle,
+        # start counting from "now" with the new value.
+        if self.auto_disable_minutes > 0 and self.enabled and self.session_state == SessionState.IDLE:
+            self._last_idle_enabled_ts = time.time()
+        else:
+            self._last_idle_enabled_ts = 0.0
+
         if self.backend is not None:
             self.backend.request_param_update(self.current_protocol, self.buzzer_enabled)
         # TODO: wire this to backend/gpio when you have an API there.
 
+        
     def _on_settings_cancel(self) -> None:
         self._exit_settings_mode()
 
@@ -1738,6 +1815,40 @@ class ParamsPage(QWidget):
 
         self.intensity_gauge.setDisabled(True)
 
+    def _check_auto_disable(self) -> None:
+        """
+        Automatically disable system when it has been IDLE and enabled
+        longer than the configured timeout.
+        """
+        if self.auto_disable_minutes <= 0:
+            return  # OFF
+
+        if not self.enabled:
+            self._last_idle_enabled_ts = 0.0
+            return
+
+        if self.session_state != SessionState.IDLE:
+            # Only count idle time, not running/paused
+            self._last_idle_enabled_ts = 0.0
+            return
+
+        if self._last_idle_enabled_ts <= 0.0:
+            # If somehow not initialized, start counting from now
+            self._last_idle_enabled_ts = time.time()
+            return
+
+        elapsed = time.time() - self._last_idle_enabled_ts
+        if elapsed >= self.auto_disable_minutes * 60:
+            # Time's up → go to disable mode
+            self.enabled = False
+            self._last_idle_enabled_ts = 0.0
+            self._apply_enable_state()
+            try:
+                self.session_log_widget.show_error("Auto disable timeout")
+            except Exception:
+                pass
+
+
     def _apply_enable_state(self) -> None:
         normal_temp = (
             self.coil_normal_Temperature
@@ -1794,6 +1905,13 @@ class ParamsPage(QWidget):
 
     def _on_en_pressed(self) -> None:
         self.enabled = not self.enabled
+
+        # When enabling while IDLE, start idle timer; when disabling, clear it
+        if self.enabled and self.session_state == SessionState.IDLE:
+            self._last_idle_enabled_ts = time.time()
+        else:
+            self._last_idle_enabled_ts = 0.0
+
         self._apply_enable_state()
 
         if (not self.enabled) and (

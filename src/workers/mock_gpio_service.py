@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
-from PySide6.QtCore import QObject, Signal, QTimer, Qt
+from PySide6.QtCore import QObject, Signal, QTimer, Qt, QEvent
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
@@ -122,11 +122,25 @@ class MockGPIOService(QObject):
         if not self._running:
             return super().eventFilter(obj, event)
 
-        if isinstance(event, QKeyEvent):
-            if event.type() == QKeyEvent.KeyPress and not event.isAutoRepeat():
-                self._on_key_press(event.key())
-            elif event.type() == QKeyEvent.KeyRelease and not event.isAutoRepeat():
-                self._on_key_release(event.key())
+        handled = False
+
+        if isinstance(event, QKeyEvent) and not event.isAutoRepeat():
+            if event.type() == QEvent.KeyPress:
+                key = event.key()
+                # Handle our mapped keys
+                if key in self._key_to_pin or key in (Qt.Key_Left, Qt.Key_Right):
+                    self._on_key_press(key)
+                    handled = True
+            elif event.type() == QEvent.KeyRelease:
+                key = event.key()
+                if key in self._key_to_pin:
+                    self._on_key_release(key)
+                    handled = True
+
+        if handled:
+            # Stop further processing → widgets won't also react to ↑ / ↓ / etc.
+            return True
+
         return super().eventFilter(obj, event)
 
     def _on_key_press(self, key: int) -> None:
