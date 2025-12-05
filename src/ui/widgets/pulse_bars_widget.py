@@ -198,7 +198,7 @@ class PulseTrainView(QWidget):
         Decide how "thick" each pulse is based on frequency.
         Made a bit chunkier to be more visible.
         """
-        base = 8.0 / self._freq_hz  # bigger base
+        base = 5.0 / self._freq_hz  # bigger base
         stroke_w = base
         if stroke_w < 2.0:
             stroke_w = 2.0
@@ -330,10 +330,11 @@ class PulseTrainView(QWidget):
         # amplitude label on far left
         painter.setPen(QPen(self.palette().color(self.foregroundRole())))
         font_amp = QFont(painter.font())
-        font_amp.setPointSizeF(font_amp.pointSizeF() * 1.1)
+        font_amp.setBold(True)
+        font_amp.setPointSizeF(font_amp.pointSizeF() * 0.6)
         painter.setFont(font_amp)
         painter.drawText(
-            5,
+            0,
             int((pulse_top_y + pulse_bottom_y) / 2),
             self._amplitude_label
         )
@@ -401,7 +402,8 @@ class PulseTrainView(QWidget):
         # ---- TOP bracket -> train visual duration in seconds ----
         painter.setPen(QPen(self.palette().color(self.foregroundRole())))
         font_ann = QFont(painter.font())
-        font_ann.setPointSizeF(font_ann.pointSizeF() * 0.9)
+        font_ann.setPointSizeF(font_ann.pointSizeF() * 0.8)
+        font_ann.setBold(True)
         painter.setFont(font_ann)
 
         burst_label_ms = f"{burst_total_ms / 1000.0:.1f} seconds"
@@ -849,22 +851,41 @@ class PulseBarsWidget(QWidget):
             self._paused = False
             self.timer.stop()
 
-    def _emit_remaining(self, elapsed):
-        # total MCU pulses: trains * events_per_train * pulses_per_burst
-        total_p = (
-            max(1, self._train_count)
-            * max(1, self._pulses_per_train)
-            * max(1, self._burst_pulses_count)
-        )
+    def _emit_remaining(self, elapsed: float) -> None:
+        # Basic counts
+        N = max(1, int(self._train_count))
+        E = max(1, int(self._pulses_per_train))      # events per train
+        B = max(1, int(self._burst_pulses_count))    # pulses per event
 
+        total_p = N * E * B
         rem_time = max(0.0, self._total_session_s - elapsed)
 
-        if self._total_session_s > 0:
-            frac = elapsed / self._total_session_s
-        else:
-            frac = 0.0
+        # Use phase info so pulses don't move in ITI
+        state = self._get_cycle_state(elapsed)
+        phase = state["phase"]
+        train_i = state["train_idx"]
+        prog = state["phase_progress"]  # 0..1 inside the current phase
 
-        done_p = int(total_p * frac)
+        pulses_per_train = E * B
+
+        if phase == "burst":
+            # pulses done in previous trains
+            done_before = train_i * pulses_per_train
+            # spread pulses uniformly across the burst duration
+            in_this_train = int(prog * pulses_per_train)
+            done_p = min(total_p, done_before + in_this_train)
+
+        elif phase == "rest":
+            # all pulses of this train are already done
+            done_p = min(total_p, (train_i + 1) * pulses_per_train)
+
+        elif phase == "done":
+            done_p = total_p
+
+        else:
+            # safety fallback
+            done_p = 0
+
         rem_p = max(0, total_p - done_p)
 
         # store for properties
@@ -873,7 +894,7 @@ class PulseBarsWidget(QWidget):
         self._rem_seconds = rem_time
         self._total_seconds = self._total_session_s
 
-        # old combined signal (already used by progress bar)
+        # old combined signal (already used by progress bar / log)
         self.sessionRemainingChanged.emit(
             rem_p, total_p, rem_time, self._total_session_s
         )

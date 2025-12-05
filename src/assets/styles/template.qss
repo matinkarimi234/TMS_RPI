@@ -9,6 +9,8 @@ QWidget {
 QLabel {
     color:           {{TEXT_COLOR}};
     border:          none;
+    font-size:       14px;
+    font-weight:     bold;
 }
 
 /* ─────────────────────────────────────────────────────────────── */
@@ -45,7 +47,6 @@ PulseBarsWidget QLabel#statusLabel {
 
 PulseBarsWidget QLabel#timeLabel {
     color:       {{TEXT_COLOR}};
-    font-weight: bold;
 }
 
 PulseBarsWidget QPushButton#startButton,
@@ -106,18 +107,18 @@ NavigationListWidget::item:selected QLabel {
 
 /* --- Specific Label Styling for UNSELECTED items --- */
 #ListItemTitleLabel {
-    font-size:   20px;
+    font-size:   15px;
     font-weight: bold;
     color:       {{TEXT_COLOR}};
 }
 
 #ListItemValueLabel {
-    font-size:   24px;
+    font-size:   20px;
     font-weight: bold;
     color:       {{TEXT_COLOR}};
 }
 QLabel#ListItemBoundsLabel {
-    font-size: 17px;
+    font-size: 11px;
     color: {{TEXT_COLOR_SECONDARY}};
 }
 
@@ -244,8 +245,8 @@ QLabel#mtSliderValue {
 
 
 IntensityGauge {
-    qproperty-valueScale: 1.00;
-    qproperty-titleScale: 1.2;
+    qproperty-valueScale: 0.9;
+    qproperty-titleScale: 1.1;
     qproperty-subtitleScale: 0.9;
 }
 
@@ -273,6 +274,12 @@ SessionControlWidget QFrame {
     padding: 4px 10px;
 }
 
+SessionControlWidget QLabel {
+    font-weight: bold;
+    font-size: 20px;
+}
+
+
 
 /* SessionInfoWidget styling – match CoilTemperatureWidget look   */
 
@@ -292,14 +299,14 @@ SessionInfoWidget QLabel {
 
 /* Protocol row */
 SessionInfoWidget QLabel#sessionInfoProtocolLabel {
-    font-size:   15px;
+    font-size:   14px;
     font-weight: 500;
     /* color inherits {{TEXT_COLOR}} from global QLabel */
 }
 
 /* USER text: no explicit color, uses default QLabel color */
 SessionInfoWidget QLabel#sessionInfoUserText {
-    font-size: 12px;
+    font-size: 10px;
 }
 
 /* USER icon – small rounded container like a mini badge */
@@ -309,7 +316,7 @@ SessionInfoWidget QLabel#sessionInfoUserIcon {
 
 /* MT row */
 SessionInfoWidget QLabel#sessionInfoMtLabel {
-    font-size:   19px;
+    font-size:   18px;
     font-weight: 500;
     /* color also inherits {{TEXT_COLOR}} */
 }
@@ -329,16 +336,19 @@ QProgressBar
 {
     background-color: {{BORDER_COLOR}};
     border: 1px solid {{BORDER_COLOR}};
-    border-radius: 15px;
     color: {{TEXT_COLOR}};
     text-align: center;
+
+    /* text/font styling */
+    font-size: 16px;      /* or 12pt, etc. */
+    font-weight: bold;    /* or 100–900, normal, etc. */
+    /* optional: font-family: "Segoe UI"; */
 }
+
 QProgressBar::chunk
 {
     background-color: {{ACCENT_COLOR}};
-    border-radius :     50px;
 }
-
 
 QLabel#SessionLogTitleLabel {
     font-size: 13px;

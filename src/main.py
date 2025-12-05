@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 
 def main():
     app = QApplication(sys.argv)
-    font_dir = ROOT / "assets/fonts/Tw-Cen-MT-Condensed.ttf"
+    font_dir = ROOT / "assets/fonts/Ubuntu-Regular.ttf"
     font_id = QFontDatabase.addApplicationFont(str(font_dir))
     fam = QFontDatabase.applicationFontFamilies(font_id)
     if fam:
