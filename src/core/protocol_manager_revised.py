@@ -15,6 +15,8 @@ import json, math
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import List, Dict, Any, ClassVar
+from PySide6.QtGui import QPixmap, QColor
+from typing import Optional
 
 
 # ---------------------------------------------------------------------
@@ -271,6 +273,13 @@ class ProtocolManager:
 
     def get_protocol(self, name: str) -> TMSProtocol | None:
         return self.protocols.get(name)
+    
+    def get_target_region(self, name: str) -> Optional[str]:
+        protocol = self.get_protocol(name)
+        if protocol is None:
+            return None
+        return protocol.target_region
+
 
     def list_protocols(self) -> List[str]:
         return list(self.protocols.keys())

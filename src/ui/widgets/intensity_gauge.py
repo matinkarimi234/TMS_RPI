@@ -57,6 +57,13 @@ class IntensityGauge(QWidget):
         self._text_secondary = QColor("#9aa0a6")
         self._track_override: Optional[QColor] = None
 
+        # gradient over VALUE (0..1): blue -> green -> yellow -> red
+        self._accent_color  = QColor("#127ec3")   # ACCENT_COLOR fallback
+        self._green_color   = QColor("#00B75A")   # NORMAL_COLOR
+        self._yellow_color  = QColor("#E6C200")   # WARNING_COLOR
+        self._red_color     = QColor("#CC4444")   # DANGER_COLOR
+
+
         # mode & labels
         self._mode: GaugeMode = GaugeMode.INTENSITY
         self._title_line = "INTENSITY"
@@ -138,32 +145,54 @@ class IntensityGauge(QWidget):
     # -------- Theme hook --------
     def applyTheme(self, theme_manager, theme_name: str):
         """
-        Pull colors from tokens. If gradient tokens are missing, derive a nice
-        gradient from ACCENT_COLOR so the gauge always follows the theme.
+        Pull colors from tokens. Gauge color over value:
+        ACCENT_COLOR -> NORMAL_COLOR -> WARNING_COLOR -> DANGER_COLOR.
         """
         try:
             c1 = theme_manager.get_color(theme_name, "ACCENT_GRADIENT_START", None)
             c2 = theme_manager.get_color(theme_name, "ACCENT_GRADIENT_END", None)
             acc = theme_manager.get_color(theme_name, "ACCENT_COLOR", None)
-            cs = theme_manager.get_color(theme_name, "TEXT_COLOR_SECONDARY", None)
-            tr = (theme_manager.get_color(theme_name, "BORDER_COLOR", None)
-                  or theme_manager.get_color(theme_name, "Gray", None))
+            cs  = theme_manager.get_color(theme_name, "TEXT_COLOR_SECONDARY", None)
+            tr  = (theme_manager.get_color(theme_name, "BORDER_COLOR", None)
+                   or theme_manager.get_color(theme_name, "Gray", None))
 
-            if c1 and c2:
+            normal = theme_manager.get_color(theme_name, "NORMAL_COLOR", None)
+            warn   = theme_manager.get_color(theme_name, "WARNING_COLOR", None)
+            danger = theme_manager.get_color(theme_name, "DANGER_COLOR", None)
+
+            acc    = theme_manager.get_color(theme_name, "ACCENT_COLOR", None)
+            normal = theme_manager.get_color(theme_name, "NORMAL_COLOR", None)
+            warn   = theme_manager.get_color(theme_name, "WARNING_COLOR", None)
+            danger = theme_manager.get_color(theme_name, "DANGER_COLOR", None)
+
+            if acc:
+                self._accent_color = QColor(acc)
+            if normal:
+                self._green_color = QColor(normal)
+            if warn:
+                self._yellow_color = QColor(warn)
+            if danger:
+                self._red_color = QColor(danger)
+
+            # keep old fields alive if you use them elsewhere
+            if c1:
                 self._grad_start = QColor(c1)
+            if c2:
                 self._grad_end   = QColor(c2)
-            else:
-                # derive from ACCENT_COLOR if provided
-                if acc:
-                    base = QColor(acc)
-                    self._grad_start = base.lighter(130)  # brighter
-                    self._grad_end   = base.lighter(170)  # even brighter
+
+            if acc:
+                self._accent_color = QColor(acc)
+            if normal:
+                self._normal_color = QColor(normal)
+            if warn:
+                self._warning_color = QColor(warn)
+            if danger:
+                self._danger_color = QColor(danger)
 
             if cs:
                 self._text_secondary = QColor(cs)
             self._track_override = QColor(tr) if tr else None
 
-            # Re-polish to ensure QSS + fonts + palette changes apply
             try:
                 style = self.style()
                 style.unpolish(self)
@@ -370,6 +399,36 @@ class IntensityGauge(QWidget):
         else:
             return f"{m:d}:{s:02d}"
 
+    @staticmethod
+    def _lerp_color(a: QColor, b: QColor, t: float) -> QColor:
+        t = max(0.0, min(1.0, float(t)))
+        return QColor(
+            int(a.red()   + (b.red()   - a.red())   * t),
+            int(a.green() + (b.green() - a.green()) * t),
+            int(a.blue()  + (b.blue()  - a.blue())  * t),
+            int(a.alpha() + (b.alpha() - a.alpha()) * t),
+        )
+
+    def _valueGradientColor(self, f: float) -> QColor:
+        """
+        f is global value fraction in [0, 1].
+
+        0      1/3        2/3        1
+        BLUE   GREEN      YELLOW     RED
+        """
+        f = max(0.0, min(1.0, float(f)))
+        if f < 1.0 / 3.0:
+            # blue -> green
+            local = f / (1.0 / 3.0)
+            return self._lerp_color(self._accent_color, self._green_color, local)
+        elif f < 2.0 / 3.0:
+            # green -> yellow
+            local = (f - 1.0 / 3.0) / (1.0 / 3.0)
+            return self._lerp_color(self._green_color, self._yellow_color, local)
+        else:
+            # yellow -> red
+            local = (f - 2.0 / 3.0) / (1.0 / 3.0)
+            return self._lerp_color(self._yellow_color, self._red_color, local)
     # -------- Paint --------
     def paintEvent(self, _):
         pal = self.palette()
@@ -380,33 +439,51 @@ class IntensityGauge(QWidget):
         p.setRenderHint(QPainter.Antialiasing, True)
         p.fillRect(self.rect(), bg)
 
+        # --- geometry ---
         s = min(self.width(), self.height())
         cx, cy = self.width() / 2.0, self.height() / 2.0
         radius = s * 0.42
         ring_w = max(8.0, s * self._ring_thickness_ratio)
         rect = QRectF(cx - radius, cy - radius, 2 * radius, 2 * radius)
 
-        # track
+        start16 = int((90 - self._start_angle_deg) * 16)
+        span_total16 = int(-self._span_total_deg * 16)
+
+        # --- background track ---
         pen_bg = QPen(self._trackColor())
         pen_bg.setWidthF(ring_w)
         pen_bg.setCapStyle(Qt.FlatCap)
         p.setPen(pen_bg)
-        p.drawArc(rect, int((90 - self._start_angle_deg) * 16), int(-self._span_total_deg * 16))
+        p.drawArc(rect, start16, span_total16)
 
-        # value arc with gradient
+        # --- value arc with smooth conical gradient ---
         frac = self._fraction()
         if frac > 0.0:
-            grad = QConicalGradient(QPointF(cx, cy), -self._start_angle_deg)
-            grad.setColorAt(0.00, self._grad_start)
-            grad.setColorAt(0.60, self._grad_start)
-            grad.setColorAt(1.00, self._grad_end)
+            span_deg = self._span_total_deg * frac
+            span16 = int(-span_deg * 16)
+
+            # Portion of full circle actually used by the gauge
+            arc_frac = self._span_total_deg / 360.0
+
+            # Conical gradient: angle is where position 0.0 sits
+            # We add 180° to compensate for arc being drawn clockwise.
+            grad_angle = self._start_angle_deg + 180.0
+            grad = QConicalGradient(QPointF(cx, cy), grad_angle)
+
+            # Smooth blue -> green -> yellow -> red along the arc
+            # 0 ................ arc_frac of the circle
+            grad.setColorAt(2.0 * arc_frac / 3.0,                self._accent_color)   # blue
+            grad.setColorAt(arc_frac / 3.0,     self._green_color)
+            grad.setColorAt(0.0, self._yellow_color)
+
+
             pen_val = QPen(QBrush(grad), ring_w)
             pen_val.setCapStyle(Qt.FlatCap)
             p.setPen(pen_val)
-            span = self._span_total_deg * frac
-            p.drawArc(rect, int((90 - self._start_angle_deg) * 16), int(-span * 16))
 
-        # inner donut
+            p.drawArc(rect, start16, span16)
+
+        # --- inner donut ---
         inner_r = radius - ring_w * 0.9
         inner = QRectF(cx - inner_r, cy - inner_r, 2 * inner_r, 2 * inner_r)
         p.setPen(Qt.NoPen)
@@ -414,7 +491,7 @@ class IntensityGauge(QWidget):
         p.setBrush(inner_col)
         p.drawEllipse(inner)
 
-        # center value text (percentage) – NOT in REMAINING mode
+        # --- center value text (INTENSITY / MT%) ---
         if self._mode != GaugeMode.REMAINING:
             p.setPen(text)
             f_big = QFont(self.font())
@@ -427,17 +504,16 @@ class IntensityGauge(QWidget):
             p.setFont(f_big)
             p.drawText(self.rect(), Qt.AlignCenter, f"{self._val}%")
 
-        # text around center
+        # --- text around center ---
         if self._mode == GaugeMode.REMAINING:
-            # Use darker / primary text color
+            # pulses / time mode
             p.setPen(text)
 
-            # Top: pulses (ratio only, moved up & bigger)
+            # Top text: pulses
             f_mid = QFont(self.font())
             if self._title_family:
                 f_mid.setFamily(self._title_family)
-            # bigger scaling for remaining mode
-            auto_title_pt = max(10.0, s * 0.05)  # was ~0.045
+            auto_title_pt = max(10.0, s * 0.05)
             title_pt = self._title_point if self._title_point > 0.0 else auto_title_pt
             f_mid.setBold(True)
             f_mid.setPointSizeF(title_pt)
@@ -450,11 +526,11 @@ class IntensityGauge(QWidget):
 
             p.drawText(0, int(cy - s * 0.14), self.width(), 30, Qt.AlignHCenter, pulses_str)
 
-            # Bottom: time (ratio only, moved up & bigger)
+            # Bottom text: time
             f_sub = QFont(self.font())
             if self._subtitle_family:
                 f_sub.setFamily(self._subtitle_family)
-            auto_sub_pt = max(9.0, s * 0.05)  # was ~0.036
+            auto_sub_pt = max(9.0, s * 0.05)
             sub_pt = self._subtitle_point if self._subtitle_point > 0.0 else auto_sub_pt
             f_sub.setPointSizeF(sub_pt)
             p.setFont(f_sub)
@@ -469,7 +545,7 @@ class IntensityGauge(QWidget):
             p.drawText(0, int(cy + s * 0.02), self.width(), 26, Qt.AlignHCenter, time_str)
 
         else:
-            # INTENSITY / MT_PERCENT: original title/subtitle style using secondary text color
+            # INTENSITY / MT_PERCENT titles
             p.setPen(self._text_secondary)
 
             f_mid = QFont(self.font())
@@ -489,9 +565,10 @@ class IntensityGauge(QWidget):
             sub_pt = self._subtitle_point if self._subtitle_point > 0.0 else auto_sub_pt
             f_sub.setPointSizeF(sub_pt)
             p.setFont(f_sub)
-            #p.drawText(0, int(cy + s * 0.17), self.width(), 20, Qt.AlignHCenter, self._subtitle)
+            # p.drawText(0, int(cy + s * 0.17), self.width(), 20, Qt.AlignHCenter, self._subtitle)
 
         p.end()
+
 
 
 # tiny tester
