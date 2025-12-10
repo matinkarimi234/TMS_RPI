@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QListWidget, QListWidgetItem
 from .list_item_widget import ListItemWidget
+from typing import Optional
 
 class NavigationListWidget(QListWidget):
     """
@@ -44,3 +45,9 @@ class NavigationListWidget(QListWidget):
         if prev_row < 0:
             prev_row = self.count() - 1
         self.setCurrentRow(prev_row)
+
+    def current_title(self) -> Optional[str]:
+        item = self.currentItem()
+        if item is None:
+            return None
+        return item.data(Qt.ItemDataRole.DisplayRole)

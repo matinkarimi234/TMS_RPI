@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QStackedLayout,
     QListWidgetItem,
+    QSizePolicy
 )
 
 from app.theme_manager import ThemeManager
@@ -210,12 +211,9 @@ class ParamsPage(QWidget):
         )
         self.protocol_list_widget.setObjectName("protocol_list_widget")
 
-        self.protocol_placeholder = QLabel("Protocol preview", self)
-        self.protocol_placeholder.setAlignment(Qt.AlignCenter)
-        self.protocol_placeholder.setStyleSheet(
-            "border: 1px dashed rgba(255, 255, 255, 80);"
-            "color: rgba(255, 255, 255, 160);"
-        )
+        self.protocol_image = QLabel(self)
+        self.protocol_image.setAlignment(Qt.AlignCenter)
+
 
         self.protocol_param_list = NavigationListWidget()
 
@@ -229,6 +227,8 @@ class ParamsPage(QWidget):
         gauge_size = QSize(220, 220)  # pick whatever works visually
         self.intensity_gauge.setFixedSize(gauge_size)
         self.mt_gauge.setFixedSize(gauge_size)
+
+        self.mt_image = QLabel()
 
         # Single timeout row widget for MT page (right column)
         self.mt_timeout_widget = NavigationListWidget(self)
@@ -429,13 +429,11 @@ class ParamsPage(QWidget):
         # Center: image + text
         center_col = QVBoxLayout()
 
-        picture = QLabel("Image placeholder", page)
-        picture.setAlignment(Qt.AlignCenter)
-        picture.setFixedSize(220, 220)
-        picture.setStyleSheet(
-            "border: 1px dashed rgba(255, 255, 255, 80); "
-            "color: rgba(255, 255, 255, 160);"
-        )
+
+        self.mt_image = QLabel("Image placeholder", page)
+        self.mt_image.setAlignment(Qt.AlignCenter)
+        self.mt_image.setFixedSize(220, 220)
+
 
         text = QLabel(
             "MT Instruction\n"
@@ -446,7 +444,7 @@ class ParamsPage(QWidget):
         text.setAlignment(Qt.AlignCenter)
 
         center_col.addStretch(1)
-        center_col.addWidget(picture, alignment=Qt.AlignCenter)
+        center_col.addWidget(self.mt_image, alignment=Qt.AlignCenter)
         center_col.addSpacing(8)
         center_col.addWidget(text, alignment=Qt.AlignCenter)
         center_col.addStretch(1)
@@ -473,22 +471,33 @@ class ParamsPage(QWidget):
         """
         Protocol selection page content:
 
-            [ protocol list | placeholder ]
+            [ protocol list ............... | image ]
         """
         page = QWidget()
         layout = QHBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(8, 5, 8, 5)
+        # Let it grow again
+        self.protocol_list_widget.setMinimumSize(200, 55)
+        self.protocol_list_widget.setMaximumSize(800, 1000)
 
-        # Left: available protocols
-        left_col = QVBoxLayout()
-        left_col.addWidget(self.protocol_list_widget, stretch=1)
-        layout.addLayout(left_col, stretch=1)
+        # Make it want to take available space in the layout
+        self.protocol_list_widget.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding
+        )
 
-        # Right: placeholder
-        right_col = QVBoxLayout()
-        self.protocol_placeholder.setFixedSize(280, 280)
-        right_col.addWidget(self.protocol_placeholder, alignment=Qt.AlignCenter)
-        layout.addLayout(right_col, stretch=1)
+        # Left: list fills remaining space
+        layout.addWidget(self.protocol_list_widget, stretch=1)
+
+        # Right: image, fixed size, stuck to the right
+        self.protocol_image.setFixedSize(270, 270)
+        self.protocol_image.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        layout.addWidget(
+            self.protocol_image,
+            stretch=0,
+            alignment=Qt.AlignRight | Qt.AlignCenter
+        )
 
         return page
 
@@ -1152,6 +1161,8 @@ class ParamsPage(QWidget):
 
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self.protocol_list_widget.select_previous()
+            target_region = self.protocol_manager.get_target_region(self.protocol_list_widget.current_title())
+            self._set_protocol_image(self.current_theme, target_region)
             return
 
         if self.session_state == SessionState.SETTINGS_EDIT:
@@ -1166,6 +1177,8 @@ class ParamsPage(QWidget):
 
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self.protocol_list_widget.select_next()
+            target_region = self.protocol_manager.get_target_region(self.protocol_list_widget.current_title())
+            self._set_protocol_image(self.current_theme, target_region)
             return
 
         if self.session_state == SessionState.SETTINGS_EDIT:
@@ -1942,6 +1955,7 @@ class ParamsPage(QWidget):
             print("Couldn't apply theme to gauge/coil widget:", e)
 
         self._toggle_icons_on_theme(self.current_theme)
+        self._toggle_mt_image_on_theme(self.current_theme)
 
         self._update_bottom_panel_style()
 
@@ -1954,14 +1968,41 @@ class ParamsPage(QWidget):
 
     def _toggle_icons_on_theme(self, theme: str) -> None:
         # Build an absolute path (adjust this to your real project layout if needed)
-        icon_path = Path(f"assets/icons/User_{theme}.png")
+        icon_path = Path(f"src/assets/icons/User_{theme}.png")
 
-        print("Loading user icon from:", icon_path.absolute())
 
         user_icon = QPixmap(str(icon_path))
-        print("  exists:", icon_path.exists(), "isNull:", user_icon.isNull())
 
         self.session_info.setUserIcon(user_icon)
+
+    def _toggle_mt_image_on_theme(self, theme: str) -> QPixmap:
+        image_path = Path(f"src/assets/images/MT_{theme}.png")
+        image = QPixmap(str(image_path))
+
+        self._set_Mt_image(image)
+
+    def _set_Mt_image(self, pix: QPixmap) -> None:
+        if not pix.isNull():
+            size = self.mt_image.size()
+            if size.width() <= 0 or size.height() <= 0:
+                size = QSize(200, 200)
+            scaled = pix.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.mt_image.setPixmap(scaled)
+
+
+
+    def _set_protocol_image(self, theme: str, target_region_name: str) -> None:
+        image_path = Path(f"src/assets/images/Protocols/{target_region_name}_{theme}.png")
+        image = QPixmap(str(image_path))
+        print(image_path.absolute())
+        if not image.isNull():
+            size = self.protocol_image.size()
+            if size.width() <= 0 or size.height() <= 0:
+                size = QSize(200, 200)
+            scaled = image.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.protocol_image.setPixmap(scaled)
+        else:
+            self.protocol_image.setPixmap(QPixmap())
 
     # ------------------------------------------------------------------
     #   Temperature + intensity from uC

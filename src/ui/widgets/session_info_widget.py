@@ -85,6 +85,7 @@ class SessionInfoWidget(QWidget):
                 size = QSize(18, 18)
             scaled = pix.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self._user_icon_label.setPixmap(scaled)
+    
 
     def clearUserIcon(self) -> None:
         self._user_icon_label.clear()

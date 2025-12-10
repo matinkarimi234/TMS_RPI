@@ -402,7 +402,7 @@ class PulseTrainView(QWidget):
         # ---- TOP bracket -> train visual duration in seconds ----
         painter.setPen(QPen(self.palette().color(self.foregroundRole())))
         font_ann = QFont(painter.font())
-        font_ann.setPointSizeF(font_ann.pointSizeF() * 0.8)
+        font_ann.setPointSizeF(font_ann.pointSizeF() * 1.2)
         font_ann.setBold(True)
         painter.setFont(font_ann)
 
