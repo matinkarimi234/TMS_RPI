@@ -1704,7 +1704,7 @@ class ParamsPage(QWidget):
             self.enabled = False
             # latch error
             self._log_error_latched = True
-            self.session_log_widget.show_error("Coil disconnected")
+            self.session_log_widget.show_error("Coil Disconnected")
 
         self._apply_enable_state()
 
@@ -1857,7 +1857,7 @@ class ParamsPage(QWidget):
             self._last_idle_enabled_ts = 0.0
             self._apply_enable_state()
             try:
-                self.session_log_widget.show_error("Auto disable timeout")
+                self.session_log_widget.show_error("Auto Discharge Activated")
             except Exception:
                 pass
 
@@ -1946,11 +1946,13 @@ class ParamsPage(QWidget):
         pal = self.theme_manager.generate_palette(theme_name)
         self.pulse_widget.setPalette(pal)
         self.intensity_gauge.setPalette(pal)
+        
         self.mt_gauge.setPalette(pal)
 
         try:
             self.intensity_gauge.applyTheme(self.theme_manager, theme_name)
             self.mt_gauge.applyTheme(self.theme_manager, theme_name)
+            self.session_log_widget.applyTheme(self.theme_manager, theme_name)
             self.coil_temp_widget.applyTheme(self.theme_manager, theme_name)
         except Exception as e:
             print("Couldn't apply theme to gauge/coil widget:", e)
@@ -2022,7 +2024,7 @@ class ParamsPage(QWidget):
                 self.coil_normal_Temperature = False
                 # latch error
                 self._log_error_latched = True
-                self.session_log_widget.show_error("Coil temperature too high")
+                self.session_log_widget.show_error("High Coil Temperature")
                 self._apply_enable_state()
 
     def _on_intensity_changed(self, v: int) -> None:
@@ -2160,7 +2162,7 @@ class ParamsPage(QWidget):
                 self.resistor_normal_Temperature = False
                 # latch error
                 self._log_error_latched = True
-                self.session_log_widget.show_error("Resistor temperature too high")
+                self.session_log_widget.show_error("High Resistor Temperature")
                 self._apply_enable_state()
 
 
@@ -2175,5 +2177,5 @@ class ParamsPage(QWidget):
                 self.igbt_normal_Temperature = False
                 # latch error
                 self._log_error_latched = True
-                self.session_log_widget.show_error("IGBT temperature too high")
+                self.session_log_widget.show_error("High IGBT Temperature")
                 self._apply_enable_state()

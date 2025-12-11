@@ -3,6 +3,7 @@ from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtGui import QColor, QPalette
 
 
 class SessionLogWidget(QWidget):
@@ -34,6 +35,15 @@ class SessionLogWidget(QWidget):
 
         self._is_error = False
 
+        # --- Theme state (similar to CoilTemperatureWidget) ---
+        self.theme_name = "dark"
+        self.theme_manager = None
+        self._colors = {
+            "TEXT_COLOR": "#ffffff",
+            "TEXT_COLOR_SECONDARY": "#becedd",
+            "DANGER_COLOR": "#CC3333",
+        }
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(2)
@@ -56,6 +66,71 @@ class SessionLogWidget(QWidget):
 
         layout.addWidget(self._title_label)
         layout.addWidget(self._text_label, stretch=1)
+
+        # apply initial (default) colors
+        self._apply_colors()
+
+    # ---------- theme integration (like temp widget) ----------
+
+    def applyTheme(self, tm, theme_name: str):
+        """
+        Hook for ThemeManager JSON (same pattern as CoilTemperatureWidget).
+        """
+        self.theme_manager = tm
+        self.theme_name = theme_name
+
+        g = tm.get_color if tm is not None else (lambda *args, **kwargs: kwargs.get("default"))
+
+        self._colors = {
+            "TEXT_COLOR": g(theme_name, "TEXT_COLOR", self._colors["TEXT_COLOR"]),
+            "TEXT_COLOR_SECONDARY": g(
+                theme_name,
+                "TEXT_COLOR_SECONDARY",
+                self._colors["TEXT_COLOR_SECONDARY"],
+            ),
+            # reuse whatever key you use for red in your JSON
+            "DANGER_COLOR": g(
+                theme_name,
+                "DISCONNECTED_RED",   # or "ALERT_RED" / whatever you have
+                self._colors["DANGER_COLOR"],
+            ),
+        }
+
+        self._apply_colors()
+
+    def _update_state_property(self):
+        """
+        Optional: lets QSS differentiate error vs normal.
+        """
+        self.setProperty("state", "error" if self._is_error else "normal")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def _apply_colors(self):
+        """
+        Apply text colors based on current mode + theme.
+        - normal: title = TEXT_COLOR, body = TEXT_COLOR_SECONDARY
+        - error:  both use DANGER_COLOR
+        """
+        if self._is_error:
+            title_color = self._colors["DANGER_COLOR"]
+            body_color = self._colors["DANGER_COLOR"]
+        else:
+            title_color = self._colors["TEXT_COLOR"]
+            body_color = self._colors["TEXT_COLOR"]
+
+        # Title palette
+        title_pal = self._title_label.palette()
+        title_pal.setColor(self._title_label.foregroundRole(), QColor(title_color))
+        self._title_label.setPalette(title_pal)
+
+        # Body palette
+        body_pal = self._text_label.palette()
+        body_pal.setColor(self._text_label.foregroundRole(), QColor(body_color))
+        self._text_label.setPalette(body_pal)
+
+        self._update_state_property()
+        self.update()
 
     # ---------- helpers ----------
 
@@ -85,6 +160,7 @@ class SessionLogWidget(QWidget):
             f"Pulses: {int(total_pulses)}\n"
             f"Duration: {self._fmt_time(total_time_s)}"
         )
+        self._apply_colors()
 
     def show_live(
         self,
@@ -141,7 +217,7 @@ class SessionLogWidget(QWidget):
         self._title_label.setText("Stimulation")
         self._text_label.setText(f"{pulses_text}\n{time_text}")
 
-        self.update()
+        self._apply_colors()
 
     def show_blank(self) -> None:
         """
@@ -151,6 +227,7 @@ class SessionLogWidget(QWidget):
             return
         self._title_label.setText("")
         self._text_label.setText("")
+        self._apply_colors()
 
     def show_error(self, message: str) -> None:
         """
@@ -159,8 +236,11 @@ class SessionLogWidget(QWidget):
         self._is_error = True
         self._title_label.setText("ERROR")
         self._text_label.setText(message)
+        self._apply_colors()
 
     def reset_live_state(self) -> None:
         self._live_total_pulses = 0
         self._live_delivered_pulses = 0
         self._last_rem_pulses = None
+        if self._is_error:
+            self.show_blank()
