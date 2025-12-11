@@ -51,7 +51,7 @@
     "name": "Low-Frequency (MDD/BD)",
     "subject_mt_percent_init": 0.0,
     "intensity_percent_of_mt_init": 120.0,
-    "frequency_hz_init": 10.0,
+    "frequency_hz_init": 1.0,
     "pulses_per_train": 600,
     "train_count": 2,
     "inter_train_interval_s": 30,
