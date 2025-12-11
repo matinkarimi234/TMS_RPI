@@ -6,12 +6,12 @@ QWidget {
     font-family:      "Tw Cen MT Condensed";
 }
 
-QLabel {
+/* QLabel {
     color:           {{TEXT_COLOR}};
     border:          none;
     font-size:       14px;
     font-weight:     bold;
-}
+} */
 
 /* ─────────────────────────────────────────────────────────────── */
 /* 2) PulseBarsWidget specific styling                            */
