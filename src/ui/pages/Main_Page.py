@@ -2070,9 +2070,15 @@ class ParamsPage(QWidget):
 
         v_f = float(v)
         v_clamped = self._clamp_intensity_by_mt(v_f)
+        ramp_frac = float(
+            getattr(self.current_protocol, "ramp_fraction", 1.0)
+        )
+        ramp_steps = int(
+            getattr(self.current_protocol, "ramp_steps", 1)
+        )
 
         try:
-            self.intensity_gauge.setValue(int(v_clamped))
+            self.intensity_gauge.setValue(int(v_clamped), ramp_fraction=ramp_frac, ramp_steps=ramp_steps)
         except Exception:
             pass
 
