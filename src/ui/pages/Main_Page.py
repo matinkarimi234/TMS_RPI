@@ -692,9 +692,9 @@ class ParamsPage(QWidget):
         if key == "inter_pulse_interval_ms":
             return proto.IPI_MIN_HARD, proto.IPI_MAX_HARD
         if key == "pulses_per_train":
-            return 1, 10000
+            return 1, 2000
         if key == "train_count":
-            return 1, 10000
+            return 1, 500
         if key == "inter_train_interval_s":
             return proto.ITI_MIN, proto.ITI_MAX
         if key == "burst_pulses_count":
