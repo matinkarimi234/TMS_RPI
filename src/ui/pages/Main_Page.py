@@ -2023,14 +2023,10 @@ class ParamsPage(QWidget):
             self.coil_normal_Temperature = True
             if self._log_error_latched:
                 self._log_error_latched = False
-            if self.session_log_widget._is_error:
-                self.session_log_widget.reset_live_state()
         elif temperature < COIL_DANGER_TEMPERATURE_THRESHOLD:
             self.coil_normal_Temperature = True
             if self._log_error_latched:
                 self._log_error_latched = False
-            if self.session_log_widget._is_error:
-                self.session_log_widget.reset_live_state()
         else:
             if self.coil_normal_Temperature:
                 self._set_backend_state("error")
@@ -2169,14 +2165,10 @@ class ParamsPage(QWidget):
             self.resistor_normal_Temperature = True
             if self._log_error_latched:
                 self._log_error_latched = False
-            if self.session_log_widget._is_error:
-                self.session_log_widget.reset_live_state()
         elif temperature < RESISTOR_DANGER_TEMPERATURE_THRESHOLD:
             self.resistor_normal_Temperature = True
             if self._log_error_latched:
                 self._log_error_latched = False
-            if self.session_log_widget._is_error:
-                self.session_log_widget.reset_live_state()
         else:
             if self.resistor_normal_Temperature:
                 self._set_backend_state("error")
@@ -2192,14 +2184,10 @@ class ParamsPage(QWidget):
             self.igbt_normal_Temperature = True
             if self._log_error_latched:
                 self._log_error_latched = False
-            if self.session_log_widget._is_error:
-                self.session_log_widget.reset_live_state()
         elif temperature < IGBT_DANGER_TEMPERATURE_THRESHOLD:
             self.igbt_normal_Temperature = True
             if self._log_error_latched:
                 self._log_error_latched = False
-            if self.session_log_widget._is_error:
-                self.session_log_widget.reset_live_state()
         else:
             if self.igbt_normal_Temperature:
                 self._set_backend_state("error")
