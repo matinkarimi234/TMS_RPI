@@ -288,7 +288,10 @@ class IntensityGauge(QWidget):
     def value(self) -> int:
         return self._val
 
-    def setValue(self, v: int):
+    def setValue(self, v: int, ramp_fraction: float = 1.0, ramp_steps: int = 0):
+        if self.mode() == GaugeMode.INTENSITY:
+            v = ((1 - ramp_fraction) / ramp_steps) * v
+            
         v = int(max(self._min, min(self._max, int(v))))
         if v != self._val:
             self._val = v
