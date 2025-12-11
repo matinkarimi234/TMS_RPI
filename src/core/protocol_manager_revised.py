@@ -75,7 +75,7 @@ class TMSProtocol:
     INTENSITY_ABS_MAX: int = 100  # %MSO absolute max
     FREQ_MIN: float = 0.1
     FREQ_MAX: float = 100.0
-    ITI_MIN: float = 0.5
+    ITI_MIN: float = 0.0
     ITI_MAX: float = 120.0
     IPI_MIN_HARD: float = 10.0   # ms
     IPI_MAX_HARD: float = 100.0 # ms
