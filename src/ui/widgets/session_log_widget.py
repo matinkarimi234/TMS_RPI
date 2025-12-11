@@ -107,31 +107,8 @@ class SessionLogWidget(QWidget):
         self.style().polish(self)
 
     def _apply_colors(self):
-        """
-        Apply text colors based on current mode + theme.
-        - normal: title = TEXT_COLOR, body = TEXT_COLOR_SECONDARY
-        - error:  both use DANGER_COLOR
-        """
-        if self._is_error:
-            title_color = self._colors["DANGER_COLOR"]
-            body_color = self._colors["DANGER_COLOR"]
-        else:
-            title_color = self._colors["TEXT_COLOR"]
-            body_color = self._colors["TEXT_COLOR"]
-
-        # Title palette
-        title_pal = self._title_label.palette()
-        title_pal.setColor(self._title_label.foregroundRole(), QColor(title_color))
-        self._title_label.setPalette(title_pal)
-
-        # Body palette
-        body_pal = self._text_label.palette()
-        body_pal.setColor(self._text_label.role(), QColor(body_color))
-        self._text_label.setPalette(body_pal)
-
         self._update_state_property()
         self.update()
-
     # ---------- helpers ----------
 
     @staticmethod
@@ -221,10 +198,9 @@ class SessionLogWidget(QWidget):
 
     def show_blank(self) -> None:
         """
-        Used for MT / Settings etc. Respects error mode (doesn't overwrite it).
+        Used for MT / Settings etc. Blank == not in error.
         """
-        if self._is_error:
-            return
+        self._is_error = False
         self._title_label.setText("")
         self._text_label.setText("")
         self._apply_colors()
@@ -243,5 +219,4 @@ class SessionLogWidget(QWidget):
         self._live_total_pulses = 0
         self._live_delivered_pulses = 0
         self._last_rem_pulses = None
-        if self._is_error:
-            self.show_blank()
+        self.show_blank()

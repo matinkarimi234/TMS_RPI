@@ -363,3 +363,16 @@ QLabel#SessionLogBodyLabel {
 QLabel#mt_gauge {
     color: {{TEXT_COLOR}};
 }
+
+
+SessionLogWidget[state="normal"] #SessionLogTitleLabel {
+    color: {{TEXT_COLOR}};
+}
+SessionLogWidget[state="normal"] #SessionLogBodyLabel {
+    color: {{TEXT_COLOR}};
+}
+
+SessionLogWidget[state="error"] #SessionLogTitleLabel,
+SessionLogWidget[state="error"] #SessionLogBodyLabel {
+    color: {{DANGER_COLOR}};
+}
