@@ -1274,9 +1274,9 @@ class ParamsPage(QWidget):
 
         self.pulse_widget.stop()
 
-        if hasattr(self.session_log_widget, "reset_live_state"):
-            self.session_log_widget.reset_live_state()
-            self.session_log_widget.show_blank()
+        # if hasattr(self.session_log_widget, "reset_live_state"):
+        #     self.session_log_widget.reset_live_state()
+        #     self.session_log_widget.show_blank()
 
         self.session_controls.set_state(running=False, paused=False)
 
