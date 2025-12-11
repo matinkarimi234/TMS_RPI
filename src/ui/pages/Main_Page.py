@@ -667,7 +667,7 @@ class ParamsPage(QWidget):
         try:
             self.intensity_gauge.applyTheme(self.theme_manager, self.current_theme)
             self.mt_gauge.applyTheme(self.theme_manager, self.current_theme)
-            self.session_log_widget.applyTheme(self.theme_manager, theme_name)
+            self.session_log_widget.applyTheme(self.theme_manager, self.current_theme)
             self.coil_temp_widget.applyTheme(self.theme_manager, self.current_theme)
         except Exception:
             pass

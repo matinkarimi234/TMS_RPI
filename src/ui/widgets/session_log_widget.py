@@ -126,7 +126,7 @@ class SessionLogWidget(QWidget):
 
         # Body palette
         body_pal = self._text_label.palette()
-        body_pal.setColor(self._text_label.foregroundRole(), QColor(body_color))
+        body_pal.setColor(self._text_label.role(), QColor(body_color))
         self._text_label.setPalette(body_pal)
 
         self._update_state_property()
@@ -236,6 +236,7 @@ class SessionLogWidget(QWidget):
         self._is_error = True
         self._title_label.setText("ERROR")
         self._text_label.setText(message)
+        
         self._apply_colors()
 
     def reset_live_state(self) -> None:
