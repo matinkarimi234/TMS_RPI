@@ -34,6 +34,7 @@ class SessionLogWidget(QWidget):
         super().__init__(parent)
 
         self._is_error = False
+        self.setObjectName("sessionLogWidget")
 
         # --- Theme state (similar to CoilTemperatureWidget) ---
         self.theme_name = "dark"

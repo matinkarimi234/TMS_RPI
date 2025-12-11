@@ -6,12 +6,12 @@ QWidget {
     font-family:      "Tw Cen MT Condensed";
 }
 
-/* QLabel {
+QLabel {
     color:           {{TEXT_COLOR}};
     border:          none;
     font-size:       14px;
     font-weight:     bold;
-} */
+}
 
 /* ─────────────────────────────────────────────────────────────── */
 /* 2) PulseBarsWidget specific styling                            */
@@ -365,14 +365,26 @@ QLabel#mt_gauge {
 }
 
 
-SessionLogWidget[state="normal"] #SessionLogTitleLabel {
-    color: {{TEXT_COLOR}};
+QLabel#SessionLogTitleLabel {
+    font-size: 13px;
 }
-SessionLogWidget[state="normal"] #SessionLogBodyLabel {
+
+QLabel#SessionLogBodyLabel {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Normal vs error colors for SessionLogWidget */
+QWidget#sessionLogWidget[state="normal"] QLabel#SessionLogTitleLabel {
     color: {{TEXT_COLOR}};
 }
 
-SessionLogWidget[state="error"] #SessionLogTitleLabel,
-SessionLogWidget[state="error"] #SessionLogBodyLabel {
+QWidget#sessionLogWidget[state="normal"] QLabel#SessionLogBodyLabel {
+    color: {{TEXT_COLOR}};
+    /* or {{TEXT_COLOR_SECONDARY}} if you want a softer body */
+}
+
+QWidget#sessionLogWidget[state="error"] QLabel#SessionLogTitleLabel,
+QWidget#sessionLogWidget[state="error"] QLabel#SessionLogBodyLabel {
     color: {{DANGER_COLOR}};
 }
