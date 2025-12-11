@@ -95,25 +95,27 @@ class SessionControlWidget(QWidget):
 
         # First and last: pinned to left/right
         first_btn = self.protocol_frame
+        first_btn.setMinimumWidth(130)
         last_btn = self.start_pause_frame
-
+        last_btn.setMinimumWidth(120)
         # Middle group: centered
         center_buttons = [self.mt_frame, self.settings_frame, self.stop_frame]
         center_lay = QHBoxLayout()
         center_lay.setContentsMargins(0, 0, 0, 0)
-        center_lay.setSpacing(63)  # distance between middle buttons
+        center_lay.setSpacing(50)  # distance between middle buttons
         for btn in center_buttons:
             center_lay.addWidget(btn)
 
         # Left, center, right layout:
         # [ first_btn ][ stretch ][ center_lay ][ stretch ][ last_btn ]
         main_lay.addWidget(first_btn)
-        main_lay.addSpacing(15)
+        main_lay.addSpacing(35)
         main_lay.addStretch(1)
         
 
         if center_buttons:
             main_lay.addLayout(center_lay)
+            main_lay.addSpacing(25)
             main_lay.addStretch(1)
             
         
@@ -194,7 +196,7 @@ if __name__ == "__main__":
 
     sc = SessionControlWidget()
     # IMPORTANT: don't do alignment=Qt.AlignCenter here,
-    # or youÃ¢â‚¬â„¢ll break the edge hugging.
+    # or youÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ll break the edge hugging.
     lay.addWidget(sc)
 
     w.setCentralWidget(central)

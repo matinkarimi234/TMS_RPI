@@ -491,7 +491,7 @@ class IntensityGauge(QWidget):
         # --- inner donut ---
         inner_r = radius - ring_w * 0.9
         inner = QRectF(cx - inner_r, cy - inner_r, 2 * inner_r, 2 * inner_r)
-        p.setPen(Qt.NoPen)
+        p.setPen(self._trackColor())
         inner_col = self.bg_color.darker(108) if _luminance(self.bg_color) > 0.5 else self.bg_color.lighter(115)
         p.setBrush(inner_col)
         p.drawEllipse(inner)
