@@ -1757,7 +1757,7 @@ class ParamsPage(QWidget):
             background: qlineargradient(
                 x1:0, y1:0, x2:0, y2:1,
                 stop:0 rgba({r}, {g}, {b}, 0),
-                stop:1 rgba({r}, {g}, {b}, 120)
+                stop:1 rgba({r}, {g}, {b}, 255)
             );
         }}
         """

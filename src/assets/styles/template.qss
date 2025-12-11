@@ -257,7 +257,7 @@ CoilTemperatureWidget {
     border-radius: 6px;
     color: {{TEXT_COLOR}};
     qproperty-headerFontSize: 15;
-    qproperty-tempFontSize: 15;
+    qproperty-tempFontSize: 20;
     qproperty-modeFontSize: 15;
 }
 
@@ -358,4 +358,8 @@ QLabel#SessionLogTitleLabel {
 QLabel#SessionLogBodyLabel {
     font-size: 16px;
     font-weight: 600;
+}
+
+QLabel#mt_gauge {
+    color: {{TEXT_COLOR}};
 }
