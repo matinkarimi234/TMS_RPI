@@ -1341,6 +1341,10 @@ class ParamsPage(QWidget):
         self._enter_protocol_mode()
 
     def _on_session_remaining_changed(self, rem_pulses, total_pulses, rem_s, total_s):
+        # If an error is latched, keep showing the error – don't overwrite with live info
+        if self._log_error_latched:
+            return
+
         if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
             self.session_log_widget.show_live(rem_pulses, total_pulses, rem_s, total_s)
 
@@ -1901,10 +1905,11 @@ class ParamsPage(QWidget):
             )
             sc.mt_frame.setEnabled(mt_enabled)
 
-        # If system back to normal, clear error and refresh log for current state
-        if self.system_enabled:
-            self._log_error_latched = False
-            self._update_log_widget_for_current_state()
+        # If hardware is back to normal (coil OK + temps OK), clear error
+        if self.coil_connected and normal_temp:
+            if self._log_error_latched:
+                self._log_error_latched = False
+        self._update_log_widget_for_current_state()
 
     def _force_mt_at_disable(self, en: bool):
         if not en and self.current_protocol:
@@ -2017,8 +2022,10 @@ class ParamsPage(QWidget):
 
         if temperature < COIL_WARNING_TEMPERATURE_THRESHOLD:
             self.coil_normal_Temperature = True
+            self._apply_enable_state()
         elif temperature < COIL_DANGER_TEMPERATURE_THRESHOLD:
             self.coil_normal_Temperature = True
+            self._apply_enable_state()
         else:
             if self.coil_normal_Temperature:
                 self._set_backend_state("error")
@@ -2155,8 +2162,10 @@ class ParamsPage(QWidget):
     def _on_resistor_Temperature(self, temperature: float):
         if temperature < RESISTOR_WARNING_TEMPERATURE_THRESHOLD:
             self.resistor_normal_Temperature = True
+            self._apply_enable_state()
         elif temperature < RESISTOR_DANGER_TEMPERATURE_THRESHOLD:
             self.resistor_normal_Temperature = True
+            self._apply_enable_state()
         else:
             if self.resistor_normal_Temperature:
                 self._set_backend_state("error")
@@ -2170,8 +2179,10 @@ class ParamsPage(QWidget):
     def _on_igbt_Temperature(self, temperature: float):
         if temperature < IGBT_WARNING_TEMPERATURE_THRESHOLD:
             self.igbt_normal_Temperature = True
+            self._apply_enable_state()
         elif temperature < IGBT_DANGER_TEMPERATURE_THRESHOLD:
             self.igbt_normal_Temperature = True
+            self._apply_enable_state()
         else:
             if self.igbt_normal_Temperature:
                 self._set_backend_state("error")
@@ -2180,3 +2191,4 @@ class ParamsPage(QWidget):
                 self._log_error_latched = True
                 self.session_log_widget.show_error("High IGBT Temperature")
                 self._apply_enable_state()
+        

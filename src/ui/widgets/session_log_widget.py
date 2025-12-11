@@ -247,7 +247,7 @@ class SessionLogWidget(QWidget):
         title_font.setBold(True)
 
         # Body font
-        body_font = QFont("Tw Cen MT Condensed", 13)
+        body_font = QFont("Tw Cen MT Condensed", 12)
         body_font.setBold(False)
 
         # Layout areas
