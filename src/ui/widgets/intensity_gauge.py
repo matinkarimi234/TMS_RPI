@@ -152,7 +152,7 @@ class IntensityGauge(QWidget):
             c1 = theme_manager.get_color(theme_name, "ACCENT_GRADIENT_START", None)
             c2 = theme_manager.get_color(theme_name, "ACCENT_GRADIENT_END", None)
             acc = theme_manager.get_color(theme_name, "ACCENT_COLOR", None)
-            cs  = theme_manager.get_color(theme_name, "TEXT_COLOR_SECONDARY", None)
+            cs  = theme_manager.get_color(theme_name, "TEXT_COLOR", None)
             tr  = (theme_manager.get_color(theme_name, "BORDER_COLOR", None)
                    or theme_manager.get_color(theme_name, "Gray", None))
 
@@ -473,8 +473,6 @@ class IntensityGauge(QWidget):
             # Smooth blue -> green -> yellow -> red along the arc
             # 0 ................ arc_frac of the circle
             grad.setColorAt(2.0 * arc_frac / 3.0,                self._accent_color)   # blue
-            grad.setColorAt(arc_frac / 3.0,     self._green_color)
-            grad.setColorAt(0.0, self._yellow_color)
 
 
             pen_val = QPen(QBrush(grad), ring_w)
