@@ -54,6 +54,8 @@ class IntensityGauge(QWidget):
         # colors (theme-overridable)
         self._grad_start = QColor("#48dbfb")
         self._grad_end   = QColor("#fadb5a")
+        self.text_color = QColor("#ffffff")
+        self.bg_color = QColor("#3c3c3c")
         self._text_secondary = QColor("#9aa0a6")
         self._track_override: Optional[QColor] = None
 
@@ -155,6 +157,7 @@ class IntensityGauge(QWidget):
             cs  = theme_manager.get_color(theme_name, "TEXT_COLOR", None)
             tr  = (theme_manager.get_color(theme_name, "BORDER_COLOR", None)
                    or theme_manager.get_color(theme_name, "Gray", None))
+            bg = theme_manager.get_color(theme_name, "BACKGROUND_COLOR", None)
 
             normal = theme_manager.get_color(theme_name, "NORMAL_COLOR", None)
             warn   = theme_manager.get_color(theme_name, "WARNING_COLOR", None)
@@ -164,6 +167,12 @@ class IntensityGauge(QWidget):
             normal = theme_manager.get_color(theme_name, "NORMAL_COLOR", None)
             warn   = theme_manager.get_color(theme_name, "WARNING_COLOR", None)
             danger = theme_manager.get_color(theme_name, "DANGER_COLOR", None)
+
+            if cs:
+                self.text_color = QColor(cs)
+
+            if bg:
+                self.bg_color = QColor(bg)
 
             if acc:
                 self._accent_color = QColor(acc)
@@ -432,12 +441,10 @@ class IntensityGauge(QWidget):
     # -------- Paint --------
     def paintEvent(self, _):
         pal = self.palette()
-        bg = pal.window().color()
-        text = pal.windowText().color()
 
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
-        p.fillRect(self.rect(), bg)
+        p.fillRect(self.rect(), self.bg_color)
 
         # --- geometry ---
         s = min(self.width(), self.height())
@@ -485,13 +492,13 @@ class IntensityGauge(QWidget):
         inner_r = radius - ring_w * 0.9
         inner = QRectF(cx - inner_r, cy - inner_r, 2 * inner_r, 2 * inner_r)
         p.setPen(Qt.NoPen)
-        inner_col = bg.darker(108) if _luminance(bg) > 0.5 else bg.lighter(115)
+        inner_col = self.bg_color.darker(108) if _luminance(self.bg_color) > 0.5 else self.bg_color.lighter(115)
         p.setBrush(inner_col)
         p.drawEllipse(inner)
 
         # --- center value text (INTENSITY / MT%) ---
         if self._mode != GaugeMode.REMAINING:
-            p.setPen(text)
+            p.setPen(self.text_color)
             f_big = QFont(self.font())
             if self._value_family:
                 f_big.setFamily(self._value_family)
@@ -505,7 +512,7 @@ class IntensityGauge(QWidget):
         # --- text around center ---
         if self._mode == GaugeMode.REMAINING:
             # pulses / time mode
-            p.setPen(text)
+            p.setPen(self.text_color)
 
             # Top text: pulses
             f_mid = QFont(self.font())
