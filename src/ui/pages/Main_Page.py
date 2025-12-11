@@ -1697,9 +1697,6 @@ class ParamsPage(QWidget):
         if hasattr(self, "coil_temp_widget"):
             try:
                 self.coil_temp_widget.setCoilConnected(self.coil_connected)
-                self._log_error_latched = False
-                if self.session_log_widget._is_error:
-                    self.session_log_widget.reset_live_state()
 
             except Exception:
                 pass
