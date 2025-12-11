@@ -1697,7 +1697,6 @@ class ParamsPage(QWidget):
         if hasattr(self, "coil_temp_widget"):
             try:
                 self.coil_temp_widget.setCoilConnected(self.coil_connected)
-
             except Exception:
                 pass
 
@@ -2018,12 +2017,8 @@ class ParamsPage(QWidget):
 
         if temperature < COIL_WARNING_TEMPERATURE_THRESHOLD:
             self.coil_normal_Temperature = True
-            if self._log_error_latched:
-                self._log_error_latched = False
         elif temperature < COIL_DANGER_TEMPERATURE_THRESHOLD:
             self.coil_normal_Temperature = True
-            if self._log_error_latched:
-                self._log_error_latched = False
         else:
             if self.coil_normal_Temperature:
                 self._set_backend_state("error")
@@ -2160,12 +2155,8 @@ class ParamsPage(QWidget):
     def _on_resistor_Temperature(self, temperature: float):
         if temperature < RESISTOR_WARNING_TEMPERATURE_THRESHOLD:
             self.resistor_normal_Temperature = True
-            if self._log_error_latched:
-                self._log_error_latched = False
         elif temperature < RESISTOR_DANGER_TEMPERATURE_THRESHOLD:
             self.resistor_normal_Temperature = True
-            if self._log_error_latched:
-                self._log_error_latched = False
         else:
             if self.resistor_normal_Temperature:
                 self._set_backend_state("error")
@@ -2179,12 +2170,8 @@ class ParamsPage(QWidget):
     def _on_igbt_Temperature(self, temperature: float):
         if temperature < IGBT_WARNING_TEMPERATURE_THRESHOLD:
             self.igbt_normal_Temperature = True
-            if self._log_error_latched:
-                self._log_error_latched = False
         elif temperature < IGBT_DANGER_TEMPERATURE_THRESHOLD:
             self.igbt_normal_Temperature = True
-            if self._log_error_latched:
-                self._log_error_latched = False
         else:
             if self.igbt_normal_Temperature:
                 self._set_backend_state("error")
