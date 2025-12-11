@@ -1886,6 +1886,10 @@ class ParamsPage(QWidget):
         if self.session_state == SessionState.MT_EDIT and not self.system_enabled:
             self._exit_mt_mode()
             return
+        
+        if self.session_state in (SessionState.RUNNING,SessionState.PAUSED) and not self.system_enabled:
+            self._stop_session()
+        
 
         self._update_bottom_panel_style()
         self._set_start_stop_enabled(self.system_enabled)
