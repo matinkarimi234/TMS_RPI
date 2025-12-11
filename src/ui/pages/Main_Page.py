@@ -927,7 +927,7 @@ class ParamsPage(QWidget):
             try:
                 self.intensity_gauge.setValue(int(clamped), ramp_fraction=ramp_frac, ramp_steps=ramp_steps)
             except Exception:
-                pass
+                print("Failed to set intensity gauge value")
 
     # ------------------------------------------------------------------
     #   Value modification (encoder)
@@ -1427,7 +1427,7 @@ class ParamsPage(QWidget):
             try:
                 self.intensity_gauge.setValue(0, ramp_fraction=ramp_frac, ramp_steps=ramp_steps)
             except Exception:
-                pass
+                print("Failed to set intensity gauge value")
 
             self.mt_gauge.setRange(0, 100)
             mt_val = int(self.current_protocol.subject_mt_percent)
@@ -1481,7 +1481,7 @@ class ParamsPage(QWidget):
                 try:
                     self.intensity_gauge.setValue(int(restored), ramp_fraction=ramp_frac, ramp_steps=ramp_steps)
                 except Exception:
-                    pass
+                    print("Failed to set intensity gauge value")
                 if self.backend is not None:
                     try:
                         self.backend.request_param_update(self.current_protocol, self.buzzer_enabled)
@@ -1849,7 +1849,7 @@ class ParamsPage(QWidget):
         try:
             self.intensity_gauge.setValue(0)
         except Exception:
-            pass
+            print("Failed to set intensity gauge value")
 
         self.intensity_gauge.setDisabled(True)
 
@@ -2065,7 +2065,7 @@ class ParamsPage(QWidget):
             try:
                 self.intensity_gauge.setValue(0)
             except Exception:
-                pass
+                print("Failed to set intensity gauge value")
             return
 
         v_f = float(v)
@@ -2080,7 +2080,7 @@ class ParamsPage(QWidget):
         try:
             self.intensity_gauge.setValue(int(v_clamped), ramp_fraction=ramp_frac, ramp_steps=ramp_steps)
         except Exception:
-            pass
+            print("Failed to set intensity gauge value")
 
         if self.current_protocol:
             proto = self.current_protocol
@@ -2166,13 +2166,13 @@ class ParamsPage(QWidget):
             try:
                 self.intensity_gauge.setValue(0)
             except Exception:
-                pass
+                print("Failed to set intensity gauge value")
             return
 
         try:
             self.intensity_gauge.setValue(int(v_clamped), ramp_fraction=ramp_frac, ramp_steps=ramp_steps)
         except Exception:
-            pass
+            print("Failed to set intensity gauge value")
 
         if self.current_protocol:
             self._sync_ui_from_protocol()
