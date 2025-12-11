@@ -1912,6 +1912,7 @@ class ParamsPage(QWidget):
             proto = self.current_protocol
             try:
                 self.intensity_gauge.setFromProtocol(proto)
+                self.set_protocol(proto)
                 self._sync_ui_from_protocol()
             except Exception:
                 pass
@@ -1968,7 +1969,7 @@ class ParamsPage(QWidget):
 
     def _toggle_icons_on_theme(self, theme: str) -> None:
         # Build an absolute path (adjust this to your real project layout if needed)
-        icon_path = Path(f"src/assets/icons/User_{theme}.png")
+        icon_path = Path(f"assets/icons/User_{theme}.png")
 
 
         user_icon = QPixmap(str(icon_path))
@@ -1976,7 +1977,7 @@ class ParamsPage(QWidget):
         self.session_info.setUserIcon(user_icon)
 
     def _toggle_mt_image_on_theme(self, theme: str) -> QPixmap:
-        image_path = Path(f"src/assets/images/MT_{theme}.png")
+        image_path = Path(f"assets/Images/MT_{theme}.png")
         image = QPixmap(str(image_path))
 
         self._set_Mt_image(image)
@@ -1992,7 +1993,7 @@ class ParamsPage(QWidget):
 
 
     def _set_protocol_image(self, theme: str, target_region_name: str) -> None:
-        image_path = Path(f"src/assets/images/Protocols/{target_region_name}_{theme}.png")
+        image_path = Path(f"assets/Images/Protocols/{target_region_name}_{theme}.png")
         image = QPixmap(str(image_path))
         print(image_path.absolute())
         if not image.isNull():
