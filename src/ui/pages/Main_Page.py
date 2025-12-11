@@ -300,7 +300,7 @@ class ParamsPage(QWidget):
 
         # --- Bottom row: session controls ---
         bottom_layout = QHBoxLayout(self.bottom_panel)
-        bottom_layout.setContentsMargins(16, 0, 8, 0)
+        bottom_layout.setContentsMargins(8, 0, 8, 0)
         bottom_layout.setSpacing(0)
         bottom_layout.addWidget(self.session_controls)
 
@@ -1757,7 +1757,7 @@ class ParamsPage(QWidget):
             background: qlineargradient(
                 x1:0, y1:0, x2:0, y2:1,
                 stop:0 rgba({r}, {g}, {b}, 0),
-                stop:1 rgba({r}, {g}, {b}, 255)
+                stop:1 rgba({r}, {g}, {b}, 220)
             );
         }}
         """
