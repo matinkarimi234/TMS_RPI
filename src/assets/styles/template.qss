@@ -257,7 +257,7 @@ CoilTemperatureWidget {
     border-radius: 6px;
     color: {{TEXT_COLOR}};
     qproperty-headerFontSize: 15;
-    qproperty-tempFontSize: 30;
+    qproperty-tempFontSize: 15;
     qproperty-modeFontSize: 15;
 }
 
