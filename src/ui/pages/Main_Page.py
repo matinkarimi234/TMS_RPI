@@ -576,10 +576,10 @@ class ParamsPage(QWidget):
 
         # Buzzer row
         self.settings_list_widget.add_item(
-            title="Buzzer",
+            title="On-Prior-Beep",
             value=buzzer_text,
             bounds="",
-            data={"key": "buzzer", "value": buzzer_text},
+            data={"key": "On-Prior-Beep", "value": buzzer_text},
         )
 
         # Auto disable row
@@ -1079,7 +1079,7 @@ class ParamsPage(QWidget):
             row_widget.set_value(new_val)
             meta["value"] = new_val
 
-        elif key == "buzzer":
+        elif key == "On-Prior-Beep":
             try:
                 cur_val = str(row_widget.get_value())
             except Exception:
