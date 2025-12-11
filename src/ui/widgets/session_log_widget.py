@@ -3,7 +3,7 @@ from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QPainter, QPen
 
 
 class SessionLogWidget(QWidget):
@@ -40,13 +40,15 @@ class SessionLogWidget(QWidget):
         self.theme_name = "dark"
         self.theme_manager = None
         self._colors = {
+            "BACKGROUND_COLOR": "#3c3c3c",
+            "BORDER_COLOR": "#444444",
             "TEXT_COLOR": "#ffffff",
             "TEXT_COLOR_SECONDARY": "#becedd",
             "DANGER_COLOR": "#CC3333",
         }
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(2)
 
         # live tracking
@@ -68,7 +70,9 @@ class SessionLogWidget(QWidget):
         layout.addWidget(self._title_label)
         layout.addWidget(self._text_label, stretch=1)
 
-        # apply initial (default) colors
+        self.setMinimumSize(200, 70)
+
+        # apply initial state → let QSS pick colors
         self._apply_colors()
 
     # ---------- theme integration (like temp widget) ----------
@@ -80,9 +84,17 @@ class SessionLogWidget(QWidget):
         self.theme_manager = tm
         self.theme_name = theme_name
 
-        g = tm.get_color if tm is not None else (lambda *args, **kwargs: kwargs.get("default"))
+        if tm is None:
+            # fall back to defaults
+            self._apply_colors()
+            self.update()
+            return
+
+        g = tm.get_color
 
         self._colors = {
+            "BACKGROUND_COLOR": g(theme_name, "BACKGROUND_COLOR", self._colors["BACKGROUND_COLOR"]),
+            "BORDER_COLOR": g(theme_name, "BORDER_COLOR", self._colors["BORDER_COLOR"]),
             "TEXT_COLOR": g(theme_name, "TEXT_COLOR", self._colors["TEXT_COLOR"]),
             "TEXT_COLOR_SECONDARY": g(
                 theme_name,
@@ -98,18 +110,23 @@ class SessionLogWidget(QWidget):
         }
 
         self._apply_colors()
+        self.update()
 
     def _update_state_property(self):
         """
-        Optional: lets QSS differentiate error vs normal.
+        Lets QSS differentiate error vs normal.
         """
         self.setProperty("state", "error" if self._is_error else "normal")
         self.style().unpolish(self)
         self.style().polish(self)
 
     def _apply_colors(self):
+        """
+        Only updates the 'state' property; actual text colors are handled by QSS.
+        """
         self._update_state_property()
         self.update()
+
     # ---------- helpers ----------
 
     @staticmethod
@@ -213,7 +230,6 @@ class SessionLogWidget(QWidget):
         self._is_error = True
         self._title_label.setText("ERROR")
         self._text_label.setText(message)
-        
         self._apply_colors()
 
     def reset_live_state(self) -> None:
@@ -221,3 +237,31 @@ class SessionLogWidget(QWidget):
         self._live_delivered_pulses = 0
         self._last_rem_pulses = None
         self.show_blank()
+
+    # ---------- painting (CoilTemperatureWidget-style) ----------
+
+    def paintEvent(self, event):
+        """
+        Custom background / border, child labels draw on top.
+        """
+        c = self._colors
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Background rect (slightly inset so border is visible)
+        rect = self.rect().adjusted(0, 0, -1, -1)
+
+        painter.setBrush(QColor(c["BACKGROUND_COLOR"]))
+
+        # Border: red if error, normal otherwise
+        border_color = c["DANGER_COLOR"] if self._is_error else c["BORDER_COLOR"]
+        painter.setPen(QPen(QColor(border_color), 1))
+
+        painter.drawRoundedRect(rect, 6, 6)
+
+        # Let QWidget handle children (labels)
+        super().paintEvent(event)
+
+    def sizeHint(self):
+        return self.minimumSizeHint()

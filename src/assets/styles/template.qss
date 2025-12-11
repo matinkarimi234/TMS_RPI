@@ -365,24 +365,8 @@ QLabel#mt_gauge {
 }
 
 
-QLabel#SessionLogTitleLabel {
-    font-size: 13px;
-}
-
-QLabel#SessionLogBodyLabel {
-    font-size: 16px;
-    font-weight: 600;
-}
-
-/* Normal vs error colors for SessionLogWidget */
-QWidget#sessionLogWidget[state="normal"] QLabel#SessionLogTitleLabel {
-    color: {{TEXT_COLOR}};
-}
-
-QWidget#sessionLogWidget[state="normal"] QLabel#SessionLogBodyLabel {
-    color: {{TEXT_COLOR}};
-    /* or {{TEXT_COLOR_SECONDARY}} if you want a softer body */
-}
+QWidget#sessionLogWidget[state="normal"] QLabel#SessionLogTitleLabel { color: {{TEXT_COLOR}}; }
+QWidget#sessionLogWidget[state="normal"] QLabel#SessionLogBodyLabel { color: {{TEXT_COLOR}}; }
 
 QWidget#sessionLogWidget[state="error"] QLabel#SessionLogTitleLabel,
 QWidget#sessionLogWidget[state="error"] QLabel#SessionLogBodyLabel {
