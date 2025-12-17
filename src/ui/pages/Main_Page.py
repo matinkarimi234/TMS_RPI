@@ -236,11 +236,19 @@ class ParamsPage(QWidget):
 
         # Settings widgets
         self.settings_list_widget = NavigationListWidget(self)
-        self.settings_about_label = QLabel(
-            "About / version info\n(placeholder – fill later)", self
-        )
-        self.settings_about_label.setWordWrap(True)
-        self.settings_about_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+
+
+        # --- NEW: Settings left column branding (logo + label) ---
+        self.settings_logo = QLabel(self)
+        self.settings_logo.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.settings_logo.setFixedSize(465, 208)   # adjust as you like
+
+        self.settings_logo_label = QLabel("Your App Name", self)  # <- change text
+        self.settings_logo_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.settings_logo_label.setWordWrap(True)
+
+        # Load the logo once
+        self._set_settings_logo()
 
         # Top-left session info widget
         self.session_info = SessionInfoWidget(self)
@@ -505,29 +513,28 @@ class ParamsPage(QWidget):
         """
         Settings page content:
 
-            [ About / info | settings NavigationListWidget ]
+            [ Logo + label | settings NavigationListWidget ]
         """
         page = QWidget()
         layout = QHBoxLayout(page)
         layout.setContentsMargins(8, 5, 8, 5)
         layout.setSpacing(16)
 
-        # Left: About section
+        # Left: Logo + label (replaces the old About block)
         left_col = QVBoxLayout()
-        left_col.addWidget(self.settings_about_label, stretch=1)
+        left_col.setSpacing(8)
+        left_col.addWidget(self.settings_logo, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
+        left_col.addWidget(self.settings_logo_label, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
         left_col.addStretch(1)
         layout.addLayout(left_col, stretch=1)
 
         # Right: Settings list
         right_col = QVBoxLayout()
-        # title = QLabel("Settings", page)
-        # title.setAlignment(Qt.AlignCenter)
-        # right_col.addWidget(title)
         right_col.addWidget(self.settings_list_widget, stretch=1)
-
         layout.addLayout(right_col, stretch=1)
 
         return page
+
 
     def _populate_param_list(self) -> None:
         """Fill the navigation list with parameter rows."""
@@ -1969,6 +1976,7 @@ class ParamsPage(QWidget):
 
         self._toggle_icons_on_theme(self.current_theme)
         self._toggle_mt_image_on_theme(self.current_theme)
+        self._toggle_protocol_image_on_theme(self.current_theme)
 
         self._update_bottom_panel_style()
 
@@ -1994,6 +2002,11 @@ class ParamsPage(QWidget):
 
         self._set_Mt_image(image)
 
+    def _toggle_protocol_image_on_theme(self, theme: str) -> None:
+        if self.current_protocol:
+            target_region = self.protocol_manager.get_target_region(self.current_protocol.name)
+            self._set_protocol_image(theme, target_region)
+
     def _set_Mt_image(self, pix: QPixmap) -> None:
         if not pix.isNull():
             size = self.mt_image.size()
@@ -2002,6 +2015,22 @@ class ParamsPage(QWidget):
             scaled = pix.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.mt_image.setPixmap(scaled)
 
+    def _set_settings_logo(self) -> None:
+        image_path = Path("assets/Images/Logo_NoBG.png")
+        pix = QPixmap(str(image_path))
+
+        if pix.isNull():
+            # Fail gracefully if path is wrong / file missing
+            self.settings_logo.setText("Logo not found")
+            self.settings_logo.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            return
+
+        size = self.settings_logo.size()
+        if size.width() <= 0 or size.height() <= 0:
+            size = QSize(220, 220)
+
+        scaled = pix.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.settings_logo.setPixmap(scaled)
 
 
     def _set_protocol_image(self, theme: str, target_region_name: str) -> None:

@@ -28,7 +28,7 @@ class ListItemWidget(QWidget):
 
         # --- Use a GridLayout for precise positioning ---
         layout = QGridLayout(self)
-        layout.setContentsMargins(15, 10, 15, 10)
+        layout.setContentsMargins(15, 5, 15, 5)
         layout.setSpacing(5)
 
         # Add widgets: widget, row, column
