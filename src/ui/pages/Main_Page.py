@@ -33,6 +33,7 @@ from config.settings import (
     RESISTOR_WARNING_TEMPERATURE_THRESHOLD,
     RESISTOR_DANGER_TEMPERATURE_THRESHOLD,
     HARD_MAX_INTENSITY,
+    SERIAL_NUMBER
 )
 
 # NEW helpers
@@ -238,17 +239,32 @@ class ParamsPage(QWidget):
         self.settings_list_widget = NavigationListWidget(self)
 
 
-        # --- NEW: Settings left column branding (logo + label) ---
-        self.settings_logo = QLabel(self)
-        self.settings_logo.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.settings_logo.setFixedSize(465, 208)   # adjust as you like
+        # --- About Us block (Settings left column) ---
+        # Try to fetch serial number from config.settings safely.
+        # Change "SERIAL_NUMBER" below to whatever your real attribute is
+        # (or just keep this getattr pattern and set it in config.settings).
 
-        self.settings_logo_label = QLabel("Your App Name", self)  # <- change text
-        self.settings_logo_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.settings_logo_label.setWordWrap(True)
+        self.about_title = QLabel("MAGSTREAM", self)
+        self.about_title.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.about_title.setObjectName("about_title")
 
-        # Load the logo once
-        self._set_settings_logo()
+
+        self.about_model = QLabel("Model: RT100", self)
+        self.about_model.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.about_model.setObjectName("about_model")
+
+        serial_str = self._format_serial_number()
+        self.about_sn = QLabel(f"S/N: {serial_str}", self)
+        self.about_sn.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.about_sn.setObjectName("about_sn")
+
+        self.about_mfg = QLabel("Manifacturer: ARTIN Co.", self)  # keep spelling as you wrote
+        self.about_mfg.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.about_mfg.setObjectName("about_mfg")
+
+        self.about_contact = QLabel("Contact Us: www.ArtinMT.com", self)
+        self.about_contact.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.about_contact.setObjectName("about_contact")
 
         # Top-left session info widget
         self.session_info = SessionInfoWidget(self)
@@ -517,15 +533,31 @@ class ParamsPage(QWidget):
         """
         page = QWidget()
         layout = QHBoxLayout(page)
-        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setContentsMargins(8, 50, 8, 5)
         layout.setSpacing(16)
 
-        # Left: Logo + label (replaces the old About block)
+        # Left: About Us block
         left_col = QVBoxLayout()
-        left_col.setSpacing(8)
-        left_col.addWidget(self.settings_logo, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
-        left_col.addWidget(self.settings_logo_label, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
-        left_col.addStretch(1)
+        left_col.setSpacing(20)
+
+        left_col.addWidget(self.about_title, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        # "medium distance" down from MAGSTREAM
+        left_col.addSpacing(30)
+
+        left_col.addWidget(self.about_model, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        # "bottom in close" for S/N
+        left_col.addSpacing(4)
+        left_col.addWidget(self.about_sn, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        left_col.addSpacing(8)
+        left_col.addWidget(self.about_mfg, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
+
+        # Push contact line to the bottom (“at the end”)
+        left_col.addSpacing(8)
+        left_col.addWidget(self.about_contact, stretch=0, alignment=Qt.AlignLeft | Qt.AlignTop)
+
         layout.addLayout(left_col, stretch=1)
 
         # Right: Settings list
@@ -2015,23 +2047,6 @@ class ParamsPage(QWidget):
             scaled = pix.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.mt_image.setPixmap(scaled)
 
-    def _set_settings_logo(self) -> None:
-        image_path = Path("assets/Images/Logo_NoBG.png")
-        pix = QPixmap(str(image_path))
-
-        if pix.isNull():
-            # Fail gracefully if path is wrong / file missing
-            self.settings_logo.setText("Logo not found")
-            self.settings_logo.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-            return
-
-        size = self.settings_logo.size()
-        if size.width() <= 0 or size.height() <= 0:
-            size = QSize(220, 220)
-
-        scaled = pix.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.settings_logo.setPixmap(scaled)
-
 
     def _set_protocol_image(self, theme: str, target_region_name: str) -> None:
         image_path = Path(f"assets/Images/Protocols/{target_region_name}_{theme}.png")
@@ -2224,4 +2239,22 @@ class ParamsPage(QWidget):
                 self._log_error_latched = True
                 self.session_log_widget.show_error("High IGBT Temperature")
                 self._apply_enable_state()
+
+
+    def _format_serial_number(self) -> str:
+
+        # If it's not a dict, just stringify it
+        if not isinstance(SERIAL_NUMBER, dict):
+            return str(SERIAL_NUMBER) if SERIAL_NUMBER is not None else "—"
+
+        parts = [
+            str(SERIAL_NUMBER.get("MODEL", "")).strip(),
+            str(SERIAL_NUMBER.get("YEAR", "")).strip(),
+            str(SERIAL_NUMBER.get("MONTH", "")).strip(),
+            str(SERIAL_NUMBER.get("UNIT", "")).strip(),
+        ]
+
+        # Remove empty parts and join
+        parts = [p for p in parts if p]
+        return "".join(parts) if parts else ""
         

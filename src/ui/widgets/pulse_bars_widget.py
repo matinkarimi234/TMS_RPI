@@ -460,11 +460,29 @@ class PulseTrainView(QWidget):
 
         total_pulses_per_train = self._pulses_per_train * self._burst_pulses_count
         pulses_text = f"x{total_pulses_per_train}"
-        center_label_text = f"........{pulses_text}........"
 
-        cl_tw = painter.fontMetrics().horizontalAdvance(center_label_text)
-        cl_tx = usable_left + (usable_w - cl_tw) / 2
+        fm = painter.fontMetrics()
+        text_w = fm.horizontalAdvance(pulses_text)
+        dot_w = max(1, fm.horizontalAdvance("."))
+
+        # The usable middle gap between groups (this is what we fit into)
+        gap_left = left_group_right
+        gap_right = right_group_left
+        gap_w = max(0.0, gap_right - gap_left)
+
+        pad = 3  # px padding inside the gap
+        available = max(0.0, gap_w - 2 * pad)
+
+        # How many dots can we fit on each side?
+        dots_each = int(max(0.0, (available - text_w) / (2 * dot_w)))
+        dots_each = min(dots_each, 20)  # optional cap (prevents silly long strings)
+
+        center_label_text = "." * dots_each + pulses_text + "." * dots_each
+
+        cl_tw = fm.horizontalAdvance(center_label_text)
+        cl_tx = gap_left + (gap_w - cl_tw) / 2
         cl_ty = int((pulse_top_y + baseline_y) / 2)
+
         painter.drawText(int(cl_tx), cl_ty, center_label_text)
 
         # ---- playhead: vertical accent bar across whole burst ----

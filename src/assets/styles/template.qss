@@ -372,3 +372,15 @@ QWidget#sessionLogWidget[state="error"] QLabel#SessionLogTitleLabel,
 QWidget#sessionLogWidget[state="error"] QLabel#SessionLogBodyLabel {
     color: {{DANGER_COLOR}};
 }
+
+
+QLabel#about_title {
+    font-size: 24px;
+    font-weight: bold;
+}
+QLabel#about_model,
+QLabel#about_sn,
+QLabel#about_mfg,
+QLabel#about_contact {
+    font-size: 16px;
+}

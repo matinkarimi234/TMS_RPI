@@ -1,5 +1,14 @@
 # src/config/settings.py
 
+
+# SN Config
+SERIAL_NUMBER = {
+    "MODEL": "100",
+    "YEAR": "04",
+    "MONTH": "09",
+    "UNIT": "001"
+}
+
 # Screen Config
 SCREEN_RESOLUTION_W = 800
 SCREEN_RESOLUTION_H = 480
