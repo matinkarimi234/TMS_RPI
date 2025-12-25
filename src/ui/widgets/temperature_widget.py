@@ -24,8 +24,8 @@ class CoilTemperatureWidget(QWidget):
 
         # --- Font sizes controlled via QSS (baseline for "connected") ---
         self._headerFontSize = 10
-        self._tempFontSize = 40
-        self._modeFontSize = 20
+        self._tempFontSize = 30
+        self._modeFontSize = 18
 
         # store "normal" font sizes, so we can restore them when coil reconnects
         self._normal_header_size = self._headerFontSize
@@ -148,7 +148,7 @@ class CoilTemperatureWidget(QWidget):
             mode_text = "WARNING"
         elif self.mode == self.DANGER:
             mode_color = QColor(c["DANGER_COLOR"])
-            mode_text = "DANGER"
+            mode_text = "OVERHEAT"
         else:  # DISCONNECTED
             mode_color = QColor(c["COIL_DISCONNECTED"])
             mode_text = "DISCONNECTED"

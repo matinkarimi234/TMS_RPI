@@ -2141,7 +2141,7 @@ class ParamsPage(QWidget):
                 self._set_backend_state("error")
                 self.coil_normal_Temperature = False
                 self._log_error_latched = True
-                self.session_log_widget.show_error("High Coil Temperature")
+                self.session_log_widget.show_error("Coil OverHeated")
                 self._apply_enable_state()
 
     def _on_intensity_changed(self, v: int) -> None:
@@ -2279,7 +2279,7 @@ class ParamsPage(QWidget):
                 self._set_backend_state("error")
                 self.resistor_normal_Temperature = False
                 self._log_error_latched = True
-                self.session_log_widget.show_error("High Resistor Temperature")
+                self.session_log_widget.show_error("Resistors OverHeated")
                 self._apply_enable_state()
 
     def _on_igbt_Temperature(self, temperature: float):
@@ -2294,7 +2294,7 @@ class ParamsPage(QWidget):
                 self._set_backend_state("error")
                 self.igbt_normal_Temperature = False
                 self._log_error_latched = True
-                self.session_log_widget.show_error("High IGBT Temperature")
+                self.session_log_widget.show_error("IGBT OverHeated")
                 self._apply_enable_state()
 
     def _format_serial_number(self) -> str:
