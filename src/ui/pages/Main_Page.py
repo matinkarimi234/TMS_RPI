@@ -2159,9 +2159,9 @@ class ParamsPage(QWidget):
                     self.session_controls.set_state(running=False, paused=False)
 
     def _apply_intensity_from_uc(self, val: int) -> None:
-        # NEW: ignore UI intensity updates while running/paused (keep locked UI stable)
-        if self._is_stimulation_locked():
-            return
+        # # NEW: ignore UI intensity updates while running/paused (keep locked UI stable)
+        # if self._is_stimulation_locked():
+        #     return
 
         if self.session_state == SessionState.MT_EDIT and self._uC_State == 7:
             v = int(val)
