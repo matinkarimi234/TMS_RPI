@@ -1738,20 +1738,15 @@ class ParamsPage(QWidget):
     #   Settings mode: enter/exit/apply/cancel
     # ------------------------------------------------------------------
     def _on_settings_requested(self) -> None:
-        # In Protocol mode: Settings becomes "Psychiatry" filter
+        # Ignore Settings hardware presses while editing MT/Settings (if that's what you want)
+        if self.session_state in (SessionState.MT_EDIT, SessionState.SETTINGS_EDIT):
+            return
+
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self._set_protocol_subject_filter("Psychiatry")
             return
 
-        # NEW: cannot open settings while stimulating/paused
         if self._is_stimulation_locked():
-            return
-
-        if self.session_state == SessionState.MT_EDIT:
-            self._on_mt_cancel()
-            return
-        if self.session_state == SessionState.SETTINGS_EDIT:
-            self._on_settings_cancel()
             return
 
         self._enter_settings_mode()
