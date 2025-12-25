@@ -44,6 +44,7 @@ from ui.helpers.gpio_guard import GpioEventGuard
 GAUGE_COLUMN_WIDTH = 260  # fixed width so gauge x-position matches between pages
 
 
+
 class ParamsPage(QWidget):
     """
     Main parameter/session page.
@@ -957,12 +958,7 @@ class ParamsPage(QWidget):
     #   Value modification (encoder)
     # ------------------------------------------------------------------
     def _modify_value(self, delta: float) -> None:
-        # HARD LOCKS
         if self.session_state == SessionState.PROTOCOL_EDIT:
-            return
-        if self._is_stimulation_locked():
-            return
-        if self._is_param_edit_locked():
             return
 
         if not self.current_protocol:
@@ -970,6 +966,10 @@ class ParamsPage(QWidget):
 
         key, meta = self._get_current_param_meta()
         if not key:
+            return
+
+        #NEW: lock logic + exception for ramp params
+        if not self._can_edit_param_key(key):
             return
 
         proto = self.current_protocol
@@ -1332,7 +1332,7 @@ class ParamsPage(QWidget):
 
     def _on_protocols_list_requested(self) -> None:
         # NEW: cannot open protocol list while RUNNING/PAUSED
-        if self._is_stimulation_locked():
+        if self._is_stimulating():
             return
 
         if self.session_state == SessionState.MT_EDIT:
@@ -1611,6 +1611,41 @@ class ParamsPage(QWidget):
                 return
 
         self._on_protocol_selected()
+
+    # Params that are allowed to change even on non-User-Defined protocols (IDLE only)
+    EDITABLE_ON_PRESET_PROTOCOL_KEYS = {"ramp_fraction", "ramp_steps"}
+    def _is_stimulating(self) -> bool:
+        return self.session_state in (SessionState.RUNNING, SessionState.PAUSED)
+
+    def _current_protocol_is_user_defined(self) -> bool:
+        # Use YOUR existing filter state if you have it (recommended).
+        # Example:
+        # return getattr(self, "_selected_disease_subject", "User Defined") == "User Defined"
+
+        # Fallback if you store it on protocol:
+        p = self.current_protocol
+        if not p:
+            return True
+        if hasattr(p, "disease_subject"):
+            return str(getattr(p, "disease_subject")).strip().lower() == "user defined"
+        return False
+
+    def _can_edit_param_key(self, key: str) -> bool:
+        # During stimulation: lock ALL list parameters
+        if self._is_stimulating():
+            return False
+
+        # In edit pages you already block modification
+        if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT, SessionState.SETTINGS_EDIT):
+            return False
+
+        # IDLE rules:
+        if self._current_protocol_is_user_defined():
+            return True
+
+        # Preset protocol: allow only ramp params
+        return key in self.EDITABLE_ON_PRESET_PROTOCOL_KEYS
+
 
     def _on_protocol_selected(self) -> None:
         item = self.protocol_list_widget.currentItem()
@@ -2109,8 +2144,8 @@ class ParamsPage(QWidget):
 
     def _on_intensity_changed(self, v: int) -> None:
         # NEW: lock intensity changes during stimulation
-        if self._is_stimulation_locked():
-            return
+        # if self._is_stimulation_locked():
+        #     return
 
         if self.session_state in (SessionState.MT_EDIT, SessionState.PROTOCOL_EDIT, SessionState.SETTINGS_EDIT):
             return
