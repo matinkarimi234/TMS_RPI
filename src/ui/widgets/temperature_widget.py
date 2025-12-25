@@ -86,7 +86,7 @@ class CoilTemperatureWidget(QWidget):
             "TEXT_COLOR_SECONDARY": g(theme_name, "TEXT_COLOR_SECONDARY", self._colors["TEXT_COLOR_SECONDARY"]),
             "BORDER_COLOR": g(theme_name, "BORDER_COLOR", self._colors["BORDER_COLOR"]),
             "NORMAL_COLOR": g(theme_name, "CONNECTED_GREEN", "#00CC00"),
-            "WARNING_COLOR": g(theme_name, "ACCENT_GRADIENT_END", "#fadb5a"),
+            "WARNING_COLOR": g(theme_name, "WARNING_COLOR", "#fadb5a"),
             "DANGER_COLOR": g(theme_name, "DISCONNECTED_RED", "#CC0000"),
             "COIL_DISCONNECTED": g(theme_name, "COIL_DISCONNECTED", "#808080"),
         }

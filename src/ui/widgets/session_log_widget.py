@@ -253,7 +253,7 @@ class SessionLogWidget(QWidget):
             body_color = QColor(c["TEXT_COLOR_SECONDARY"])
 
         # Title font
-        title_font = QFont("Tw Cen MT Condensed", 13)
+        title_font = QFont("Tw Cen MT Condensed", 12)
         title_font.setBold(True)
 
         # Body font
