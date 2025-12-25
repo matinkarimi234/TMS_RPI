@@ -4,7 +4,7 @@ from typing import Optional
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QColor, QPainter, QFont
-
+from ui.helpers.session_state import SessionState
 
 class SessionLogWidget(QWidget):
     """
@@ -134,7 +134,7 @@ class SessionLogWidget(QWidget):
         Preview of the whole session for a set of parameters / protocol.
         """
         self._is_error = False
-        self._title_text = f"{source} session"
+        self._title_text = f"Stimulation Stopped"
         self._body_text = (
             f"Pulses: {int(total_pulses)}\n"
             f"Duration: {self._fmt_time(total_time_s)}"
@@ -147,6 +147,7 @@ class SessionLogWidget(QWidget):
         total_pulses: int,
         rem_s: float,
         total_s: float,
+        state: SessionState,
     ) -> None:
         """
         Live mode during stimulation.
@@ -191,10 +192,19 @@ class SessionLogWidget(QWidget):
         pulses_text = f"Pulses: {self._live_delivered_pulses}/{self._live_total_pulses}"
         time_text = f"Time: {self._fmt_time(elapsed_s)} / {self._fmt_time(total_s)}"
 
-        self._title_text = "Stimulation"
+        
+        if state == SessionState.RUNNING:
+            self._title_text = "Stimulation Started"
+        else:
+            self._title_text = "Stimulation Stopped"
         self._body_text = f"{pulses_text}\n{time_text}"
 
         self._apply_colors()
+
+    def show_paused(self, state: SessionState) -> None:
+        if state == SessionState.PAUSED:
+            self._title_text = "Stimulation Paused"
+            self._apply_colors()
 
     def show_blank(self) -> None:
         """

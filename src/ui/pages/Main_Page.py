@@ -1272,6 +1272,8 @@ class ParamsPage(QWidget):
 
         self.pulse_widget.pause()
         self.session_controls.set_state(running=False, paused=True)
+        if self.session_state == SessionState.PAUSED:
+            self.session_log_widget.show_paused(self.session_state)
 
         if self.backend:
             self.backend.pause_session()
@@ -1355,7 +1357,7 @@ class ParamsPage(QWidget):
         if self._log_error_latched:
             return
         if self.session_state in (SessionState.RUNNING, SessionState.PAUSED):
-            self.session_log_widget.show_live(rem_pulses, total_pulses, rem_s, total_s)
+            self.session_log_widget.show_live(rem_pulses, total_pulses, rem_s, total_s, self.session_state)
 
     # ------------------------------------------------------------------
     #   MT mode: enter/exit/apply/cancel
