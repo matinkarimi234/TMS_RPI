@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Any, Dict, List
 import time
 from pathlib import Path
+from PySide6.QtCore import QTimer
 
 from PySide6.QtCore import Signal, Qt, QSize, QTimer
 from PySide6.QtGui import QColor, QPixmap
@@ -190,6 +191,15 @@ class ParamsPage(QWidget):
         self._apply_enable_state()
         self._apply_theme_to_app(self.current_theme)
         self._connect_gpio_backend()
+
+        self._protocol_pix_cache: dict[tuple[str, str, int, int], QPixmap] = {}
+        self._pending_protocol_theme: str = self.current_theme
+        self._pending_protocol_region: str = ""
+
+        self._protocol_img_timer = QTimer(self)
+        self._protocol_img_timer.setSingleShot(True)
+        self._protocol_img_timer.setInterval(25)  # debounce window
+        self._protocol_img_timer.timeout.connect(self._apply_pending_protocol_image)
 
     # ------------------------------------------------------------------
     #   Locking rules
@@ -1175,14 +1185,14 @@ class ParamsPage(QWidget):
 
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self.protocol_list_widget.select_previous()
-            if self.protocol_manager:
-                try:
-                    name = self.protocol_list_widget.current_title()
-                    tr = self.protocol_manager.get_target_region(name)
-                    if tr:
-                        self._set_protocol_image(self.current_theme, tr)
-                except Exception:
-                    pass
+            # if self.protocol_manager:
+            #     try:
+            #         name = self.protocol_list_widget.current_title()
+            #         tr = self.protocol_manager.get_target_region(name)
+            #         if tr:
+            #             self._set_protocol_image(self.current_theme, tr)
+            #     except Exception:
+            #         pass
             return
 
         if self.session_state == SessionState.SETTINGS_EDIT:
@@ -1197,14 +1207,14 @@ class ParamsPage(QWidget):
 
         if self.session_state == SessionState.PROTOCOL_EDIT:
             self.protocol_list_widget.select_next()
-            if self.protocol_manager:
-                try:
-                    name = self.protocol_list_widget.current_title()
-                    tr = self.protocol_manager.get_target_region(name)
-                    if tr:
-                        self._set_protocol_image(self.current_theme, tr)
-                except Exception:
-                    pass
+            # if self.protocol_manager:
+            #     try:
+            #         name = self.protocol_list_widget.current_title()
+            #         tr = self.protocol_manager.get_target_region(name)
+            #         if tr:
+            #             self._set_protocol_image(self.current_theme, tr)
+            #     except Exception:
+            #         pass
             return
 
         if self.session_state == SessionState.SETTINGS_EDIT:
@@ -1657,16 +1667,13 @@ class ParamsPage(QWidget):
         name = item.text()
         self._selected_protocol_name = name
         proto = self.protocol_manager.get_protocol(name)
-
         if proto:
             self._sync_param_widget_from_protocol(proto, self.protocol_param_list, False)
             self._update_log_widget_for_current_state()
 
-            target_region = getattr(proto, "target_region", "") or ""
-            if target_region:
-                self._set_protocol_image(self.current_theme, target_region)
-            else:
-                self.protocol_image.setPixmap(QPixmap())
+            # ✅ Debounced + cached image update
+            target_region = self.protocol_manager.get_target_region(name) or ""
+            self._queue_protocol_image_update(self.current_theme, target_region)
 
     def _on_mt_requested(self) -> None:
         # In Protocol mode: MT button becomes "User Defined" filter
@@ -2310,3 +2317,41 @@ class ParamsPage(QWidget):
 
         parts = [p for p in parts if p]
         return "".join(parts) if parts else ""
+    
+
+    def _queue_protocol_image_update(self, theme: str, target_region_name: str) -> None:
+        self._pending_protocol_theme = theme
+        self._pending_protocol_region = target_region_name or ""
+        # Restart timer to collapse rapid changes into one update
+        self._protocol_img_timer.start()
+
+    def _get_cached_protocol_pix(self, theme: str, target_region_name: str) -> QPixmap:
+        size = self.protocol_image.size()
+        if size.width() <= 0 or size.height() <= 0:
+            size = QSize(270, 270)
+
+        key = (theme, target_region_name, size.width(), size.height())
+        cached = self._protocol_pix_cache.get(key)
+        if cached is not None:
+            return cached
+
+        image_path = Path(f"assets/Images/Protocols/{target_region_name}_{theme}.png")
+        base = QPixmap(str(image_path))
+        if base.isNull():
+            return QPixmap()
+
+        # Scaling is expensive → do it once and cache
+        scaled = base.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self._protocol_pix_cache[key] = scaled
+        return scaled
+
+    def _apply_pending_protocol_image(self) -> None:
+        region = self._pending_protocol_region
+        theme = self._pending_protocol_theme
+
+        if not region:
+            self.protocol_image.setPixmap(QPixmap())
+            return
+
+        pix = self._get_cached_protocol_pix(theme, region)
+        self.protocol_image.setPixmap(pix)
