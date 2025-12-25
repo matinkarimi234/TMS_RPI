@@ -356,7 +356,7 @@ QProgressBar::chunk
 }
 
 QLabel#SessionLogTitleLabel {
-    font-size: 13px;
+    font-size: 12px;
 }
 
 QLabel#SessionLogBodyLabel {
