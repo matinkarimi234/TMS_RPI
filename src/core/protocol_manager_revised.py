@@ -14,9 +14,8 @@ from __future__ import annotations
 import json, math
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import List, Dict, Any, ClassVar
+from typing import List, Dict, Any, ClassVar, Optional
 from PySide6.QtGui import QPixmap, QColor
-from typing import Optional
 
 
 # ---------------------------------------------------------------------
@@ -38,6 +37,10 @@ class TMSProtocol:
     name: str
     target_region: str
     description: str | None = None
+
+    # --- NEW: Disease subject/category (Option A expects a real attribute) ---
+    # (Keep it as a normal python identifier; JSON can still store it as "disease subject" if you want)
+    disease_subject: str | None = None
 
     # --- Subject-Specific Parameters ---
     subject_mt_percent_init: int = 50  # Motor Threshold as a % of MSO
@@ -78,7 +81,7 @@ class TMSProtocol:
     ITI_MIN: float = 0.0
     ITI_MAX: float = 120.0
     IPI_MIN_HARD: float = 10.0   # ms
-    IPI_MAX_HARD: float = 100.0 # ms
+    IPI_MAX_HARD: float = 100.0  # ms
     BURST_PULSES_ALLOWED: ClassVar[List[int]] = [1, 2, 3, 4, 5]
 
     # -----------------------------------------------------------------
@@ -107,7 +110,7 @@ class TMSProtocol:
         )
         self._frequency_hz = clamp(self.frequency_hz_init, self.FREQ_MIN, self.FREQ_MAX)
 
-        # >>> NEW: clamp ITI using ITI_MIN / ITI_MAX <<<
+        # >>> clamp ITI using ITI_MIN / ITI_MAX <<<
         self.inter_train_interval_s = clamp(
             self.inter_train_interval_s, self.ITI_MIN, self.ITI_MAX
         )
@@ -192,7 +195,10 @@ class TMSProtocol:
 
     @property
     def absolute_intensity(self) -> int:
-        return min(math.floor((self._subject_mt_percent * self._intensity_percent_of_mt) / 100), self.INTENSITY_ABS_MAX)
+        return min(
+            math.floor((self._subject_mt_percent * self._intensity_percent_of_mt) / 100),
+            self.INTENSITY_ABS_MAX
+        )
 
     @property
     def frequency_hz(self) -> float:
@@ -253,10 +259,19 @@ class TMSProtocol:
     # -----------------------------------------------------------------
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        # Keep backward compatibility with old JSON that uses "disease subject"
+        d = asdict(self)
+        ds = d.pop("disease_subject", None)
+        if ds is not None:
+            d["disease subject"] = ds
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> TMSProtocol:
+        # Accept both: "disease subject" (legacy) and "disease_subject" (new)
+        if "disease subject" in data and "disease_subject" not in data:
+            data = dict(data)
+            data["disease_subject"] = data.pop("disease subject")
         return cls(**data)
 
 
@@ -273,16 +288,32 @@ class ProtocolManager:
 
     def get_protocol(self, name: str) -> TMSProtocol | None:
         return self.protocols.get(name)
-    
+
     def get_target_region(self, name: str) -> Optional[str]:
         protocol = self.get_protocol(name)
         if protocol is None:
             return None
         return protocol.target_region
 
-
     def list_protocols(self) -> List[str]:
         return list(self.protocols.keys())
+
+    def list_protocols_on_disease_subject(self, subject: str) -> List[str]:
+        """
+        Return protocol names whose protocol.disease_subject equals `subject`
+        (case-insensitive, whitespace-trimmed). If subject empty -> all.
+        """
+        if not subject or not subject.strip():
+            return list(self.protocols.keys())
+
+        subject_norm = subject.strip().casefold()
+
+        return [
+            p.name
+            for p in self.protocols.values()
+            if p.disease_subject is not None
+            and str(p.disease_subject).strip().casefold() == subject_norm
+        ]
 
     # ---------------- I/O ------------------
 

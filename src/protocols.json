@@ -13,7 +13,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "User Defined"
   },
   {
     "name": "Dash (MDD/BD)",
@@ -29,7 +30,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "Psychiatry"
   },
   {
     "name": "iTBS (MDD/BD)",
@@ -45,7 +47,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic Burst",
     "burst_pulses_count_init": 3,
-    "inter_pulse_interval_ms_init": 20.0
+    "inter_pulse_interval_ms_init": 20.0,
+    "disease subject": "Psychiatry"
   },
   {
     "name": "Low-Frequency (MDD/BD)",
@@ -61,7 +64,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "Psychiatry"
   },
   {
     "name": "Equential Bilateral Right (MDD/BD)",
@@ -77,7 +81,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "Psychiatry"
   },
   {
     "name": "Equential Bilateral Left (MDD/BD)",
@@ -93,7 +98,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "Psychiatry"
   },
   {
     "name": "SBP Right(comorbid anxiety symptoms)",
@@ -109,7 +115,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "Psychiatry"
   },
   {
     "name": "SBP Left(comorbid anxiety symptoms)",
@@ -125,7 +132,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "Psychiatry"
   },
   {
     "name": "Craving",
@@ -141,7 +149,8 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "Psychiatry"
   },
   {
     "name": "(MDD) with comorbid anxiety symptoms",
@@ -157,6 +166,7 @@
     "ramp_steps": 1,
     "waveform": "Biphasic",
     "burst_pulses_count_init": 1,
-    "inter_pulse_interval_ms_init": 10.0
+    "inter_pulse_interval_ms_init": 10.0,
+    "disease subject": "Psychiatry"
   }
 ]

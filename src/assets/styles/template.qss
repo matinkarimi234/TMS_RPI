@@ -321,7 +321,11 @@ SessionInfoWidget QLabel#sessionInfoMtLabel {
     /* color also inherits {{TEXT_COLOR}} */
 }
 
-
+/* Make ONLY the protocol filter buttons smaller */
+SessionControlWidget QFrame[protoFilter="true"] QLabel {
+    font-size: 15px;
+    font-weight: bold; /* keep your bold look */
+}
 
 NavigationListWidget#protocol_list_widget {
     font-size: 14px;
