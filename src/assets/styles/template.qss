@@ -323,7 +323,7 @@ SessionInfoWidget QLabel#sessionInfoMtLabel {
 
 /* Make ONLY the protocol filter buttons smaller */
 SessionControlWidget QFrame[protoFilter="true"] QLabel {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: bold; /* keep your bold look */
 }
 
